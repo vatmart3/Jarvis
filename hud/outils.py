@@ -273,11 +273,11 @@ WEATHER = {
 }
 
 
-def t_meteo(args: dict):
-    lieu = str(args.get("lieu", "")).strip()
+def meteo_info(lieu: str):
+    """Renvoie (info, lieu_géocodé) ou (None, message d'erreur)."""
     place = geocode(lieu)
     if not place:
-        return f"Lieu introuvable : {lieu}.", []
+        return None, f"Lieu introuvable : {lieu}."
     q = urllib.parse.urlencode({
         "latitude": place["lat"], "longitude": place["lon"], "timezone": "auto", "forecast_days": 4,
         "current": "temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m",
@@ -286,7 +286,7 @@ def t_meteo(args: dict):
     try:
         d = _get_json("https://api.open-meteo.com/v1/forecast?" + q)
     except Exception:  # noqa: BLE001
-        return "Service météo injoignable.", []
+        return None, "Service météo injoignable."
     cur, day = d["current"], d["daily"]
     jours = []
     for i in range(min(4, len(day["time"]))):
@@ -300,6 +300,14 @@ def t_meteo(args: dict):
         "humidite": cur["relative_humidity_2m"], "vent": round(cur["wind_speed_10m"]),
         "code": cur["weather_code"], "etat": WEATHER.get(cur["weather_code"], "?"), "jours": jours,
     }
+    return info, place
+
+
+def t_meteo(args: dict):
+    lieu = str(args.get("lieu", "")).strip()
+    info, place = meteo_info(lieu)
+    if info is None:
+        return place, []
     txt = (f"Météo à {lieu} : {info['temp']} °C (ressenti {info['ressenti']} °C), {info['etat']}, vent {info['vent']} km/h, "
            f"humidité {info['humidite']} %. Prévisions : "
            + "; ".join(f"{j['date']} {j['etat']} {j['min']}–{j['max']} °C" for j in jours[1:]) + ".")
@@ -315,7 +323,7 @@ def _run(args: list[str]) -> str:
         return ""
 
 
-def t_infos_systeme(args: dict):
+def system_metrics() -> list[dict]:
     metrics = []
     home = str(Path.home())
     du = shutil.disk_usage(home)
@@ -354,6 +362,11 @@ def t_infos_systeme(args: dict):
                             "detail": f"{(tot - avail) / 1e6:.1f} Go utilisés sur {tot / 1e6:.0f} Go"})
         except (OSError, AttributeError):
             pass
+    return metrics
+
+
+def t_infos_systeme(args: dict):
+    metrics = system_metrics()
     txt = "État du système : " + "; ".join(f"{m['nom']} {m['valeur']} % ({m['detail']})" for m in metrics) + "."
     return txt, [{"type": "system", "metriques": metrics}]
 

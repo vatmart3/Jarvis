@@ -34,6 +34,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import outils  # noqa: E402
 import cerveau_claude  # noqa: E402
+import securite  # noqa: E402
+import widgets  # noqa: E402
 import secrets  # noqa: E402
 
 HUD_DIR = Path(__file__).resolve().parent
@@ -77,8 +79,9 @@ Tu contrôles un écran holographique plein écran et l'ordinateur grâce à tes
 - itineraire, style_carte (sombre, satellite, plan), zoom_carte, accueil (efface tout) ;
 - afficher_panneau : panneau à l'écran pour une liste, un résumé, des chiffres ou des étapes ;
 - meteo, minuteur, infos_systeme : affichés à l'écran ;
+- ajouter_widget, retirer_widget : widgets permanents sur l'écran d'accueil (météo, état du Mac, note, horloge, compte à rebours) ;
 - ouvrir_application, ouvrir_url, rechercher_web, regler_volume : exécutés directement ;
-- executer_commande : commande shell ; l'utilisateur doit la valider avant exécution.
+- executer_commande : commande shell zsh (mkdir, open, osascript…) ; les commandes sensibles demandent une validation.
 Sois visuel : dès qu'une réponse peut se montrer (lieux, listes, chiffres, comparaisons), utilise l'outil d'affichage adapté,
 et enchaîne plusieurs outils si la demande le demande. Si l'utilisateur dit « tu veux » ou « ce que tu veux », choisis toi-même
 des exemples pertinents. Après les actions, confirme brièvement à l'oral sans relire tout le contenu affiché.
@@ -229,7 +232,7 @@ def run_shell(commande: str) -> str:
     return f"Code de sortie {proc.returncode}.\n{out}"
 
 
-TOOLS += outils.TOOLS
+TOOLS += outils.TOOLS + widgets.TOOLS
 
 DIRECT_TOOLS = {
     "ouvrir_application": lambda a: tool_ouvrir_application(str(a.get("nom", ""))),
@@ -316,18 +319,26 @@ class Session:
                 result = DIRECT_TOOLS[name](args)
                 actions.append({"type": "tool", "name": name, "args": args, "result": result})
                 self._tool_result(name, result)
-            elif name in outils.HANDLERS:
+            elif name in outils.HANDLERS or name in widgets.HANDLERS:
                 try:
-                    result, ui = outils.HANDLERS[name](args)
+                    result, ui = (outils.HANDLERS.get(name) or widgets.HANDLERS[name])(args)
                 except Exception as exc:  # noqa: BLE001 - signalé au modèle
                     result, ui = f"Échec de l'outil {name} : {exc}", []
                 actions.extend(ui)
                 self._tool_result(name, result)
             elif name == "executer_commande":
+                cmd = str(args.get("commande", ""))
+                risque = securite.analyser(cmd)
+                if current_autonomy() == "proprietaire" and risque is None:
+                    result = run_shell(cmd)
+                    actions.append({"type": "shell", "commande": cmd, "result": result})
+                    self._tool_result(name, result)
+                    continue
+                expl = str(args.get("explication", ""))
                 self.pending = {
                     "id": uuid.uuid4().hex,
-                    "commande": str(args.get("commande", "")),
-                    "explication": str(args.get("explication", "")),
+                    "commande": cmd,
+                    "explication": (f"Action sensible ({risque}). " if risque else "") + expl,
                 }
                 return self.pending
             else:
@@ -390,6 +401,8 @@ def execute_tool(name: str, args: dict) -> tuple[str, list[dict]]:
         return result, [{"type": "tool", "name": name, "args": args, "result": result}]
     if name in outils.HANDLERS:
         return outils.HANDLERS[name](args)
+    if name in widgets.HANDLERS:
+        return widgets.HANDLERS[name](args)
     return f"Outil inconnu : {name}", []
 
 
@@ -412,6 +425,10 @@ def save_settings(data: dict) -> None:
         pass
 
 
+def current_autonomy() -> str:
+    return "prudent" if load_settings().get("autonomie") == "prudent" else "proprietaire"
+
+
 def current_brain() -> str:
     choice = load_settings().get("cerveau")
     if choice in ("local", "claude"):
@@ -421,7 +438,7 @@ def current_brain() -> str:
 
 INTERNAL_TOKEN = secrets.token_hex(16)
 BUS = cerveau_claude.EventBus()
-BRAIN = cerveau_claude.ClaudeBrain(PORT, INTERNAL_TOKEN, execute_tool, run_shell, BUS)
+BRAIN = cerveau_claude.ClaudeBrain(PORT, INTERNAL_TOKEN, execute_tool, run_shell, BUS, current_autonomy)
 
 
 
@@ -525,7 +542,7 @@ class Handler(BaseHTTPRequestHandler):
         path = urllib.parse.urlparse(self.path).path
         if path == "/api/status":
             return self._json(200, {"model": MODEL, "ollama": OLLAMA, "mac": IS_MAC, "cerveau": current_brain(),
-                                    "claude": bool(cerveau_claude.find_claude())})
+                                    "autonomie": current_autonomy(), "claude": bool(cerveau_claude.find_claude())})
         if path == "/api/events":
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             try:
@@ -538,6 +555,14 @@ class Handler(BaseHTTPRequestHandler):
             if not secrets.compare_digest(self.headers.get("X-Jarvis-Token", ""), INTERNAL_TOKEN):
                 return self._send(403, b"Forbidden", "text/plain")
             return self._json(200, {"tools": TOOLS})
+        if path == "/api/widgets":
+            return self._json(200, {"widgets": widgets.load()})
+        if path == "/api/widget/meteo":
+            lieu = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("lieu", [""])[0]
+            info, err = outils.meteo_info(lieu)
+            return self._json(200 if info else 502, {"meteo": info} if info else {"error": err})
+        if path == "/api/widget/systeme":
+            return self._json(200, {"metriques": outils.system_metrics()})
         if path == "/api/voices":
             return self._json(200, {"kokoro": kokoro_available(), "say": say_voices()})
         if path in STATIC:
@@ -585,12 +610,18 @@ class Handler(BaseHTTPRequestHandler):
                 if BRAIN.confirm(pid, approve):
                     return self._json(200, {"reply": "", "actions": [], "pending": None, "async": True})
                 return self._json(200, SESSION.confirm(pid, approve))
+            if path == "/api/widgets/remove":
+                text, _ = widgets.t_retirer({"cible": str(data.get("id", ""))})
+                return self._json(200, {"ok": True, "text": text})
             if path == "/api/settings":
+                st = load_settings()
                 if data.get("cerveau") in ("local", "claude"):
-                    st = load_settings()
                     st["cerveau"] = data["cerveau"]
-                    save_settings(st)
-                return self._json(200, {"cerveau": current_brain(), "claude": bool(cerveau_claude.find_claude())})
+                if data.get("autonomie") in ("prudent", "proprietaire"):
+                    st["autonomie"] = data["autonomie"]
+                save_settings(st)
+                return self._json(200, {"cerveau": current_brain(), "autonomie": current_autonomy(),
+                                        "claude": bool(cerveau_claude.find_claude())})
             if path == "/api/tts":
                 text = str(data.get("text", "")).strip()[:3000]
                 engine = data.get("engine")

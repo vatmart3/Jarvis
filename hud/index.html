@@ -93,7 +93,23 @@
   .route-info small { display: block; font-family: var(--mono); font-size: 10px; letter-spacing: .15em; color: var(--muted); }
 
   /* ---------- Minuteurs ---------- */
-  #timers { position: fixed; z-index: 455; top: 112px; left: 48px; display: flex; flex-direction: column; gap: 10px; }
+  #leftcol { position: fixed; z-index: 455; top: 112px; left: 48px; width: 270px; display: flex; flex-direction: column; gap: 12px;
+    max-height: calc(100vh - 220px); overflow: hidden; }
+  #timers, #widgets { display: flex; flex-direction: column; gap: 10px; }
+  .wcard { position: relative; padding: 10px 12px 10px 14px; border-left: 2px solid var(--cyan-soft);
+    background: linear-gradient(90deg, rgba(10, 30, 50, .55), rgba(3, 10, 20, 0)); animation: slidein .5s ease both; }
+  .wcard .wt { font-family: var(--mono); font-size: 10px; letter-spacing: .2em; color: var(--muted); text-transform: uppercase; margin-bottom: 4px; }
+  .wcard .big { font-family: var(--sans); font-weight: 300; font-size: 34px; line-height: 1.05; color: var(--text); text-shadow: 0 0 12px var(--cyan-soft); }
+  .wcard .sub { font-size: 14px; color: var(--text); opacity: .8; }
+  .wcard .sub::first-letter { text-transform: uppercase; }
+  .wcard .note { font-size: 16px; line-height: 1.35; white-space: pre-wrap; }
+  .wcard .mini { display: grid; grid-template-columns: 70px 1fr 34px; align-items: center; gap: 8px; font-size: 12px; margin: 3px 0; }
+  .wcard .mini .bar { height: 4px; background: rgba(73, 198, 255, .12); }
+  .wcard .mini .bar i { display: block; height: 100%; background: var(--cyan); box-shadow: 0 0 6px var(--cyan); transition: width 1s; }
+  .wcard .mini b { font-family: var(--mono); font-weight: normal; color: var(--cyan); text-align: right; }
+  .wcard .wx { position: absolute; top: 6px; right: 4px; background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 12px; opacity: 0; transition: opacity .3s; }
+  .wcard:hover .wx, .wcard .wx:focus-visible { opacity: 1; }
+  body.ui-idle .wcard .wx { opacity: 0; }
   .timer { display: flex; align-items: center; gap: 12px; animation: slidein .5s ease both; }
   .timer svg { width: 54px; height: 54px; transform: rotate(-90deg); }
   .timer circle { fill: none; stroke-width: 3; }
@@ -251,7 +267,7 @@
     #log, #bar { left: 16px; width: calc(100% - 32px); }
     #log { bottom: 90px; } #bar { bottom: 24px; }
     body.map-on #orb { left: calc(100% - 70px); top: 120px; width: 96px; height: 96px; }
-    #panels { right: 16px; left: 16px; width: auto; top: 180px; max-height: 40vh; } #timers { left: 16px; top: 96px; }
+    #panels { right: 16px; left: 16px; width: auto; top: 180px; max-height: 40vh; } #leftcol { left: 16px; top: 96px; width: 200px; }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; }
@@ -267,7 +283,7 @@
 <div id="scan"></div>
 <div id="maptitle"></div>
 <div id="panels" aria-live="polite"></div>
-<div id="timers"></div>
+<div id="leftcol"><div id="timers"></div><div id="widgets"></div></div>
 <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
 
 <div id="clock"><div class="time" id="time">--:--:--</div><div class="date" id="date"></div></div>
@@ -311,6 +327,7 @@
   <input id="input" type="text" placeholder="Écris à Jarvis…  (touche /)" autocomplete="off" aria-label="Message pour Jarvis">
   <button class="btn" id="handsfree" title="Écoute permanente : dis « Jarvis » puis ta demande">Mains libres</button>
   <button class="btn" id="brainbtn" title="Changer de cerveau : Claude (abonnement Claude) ou modèle local">Cerveau</button>
+  <button class="btn" id="autobtn" title="Propriétaire : Jarvis agit seul, sauf actions sensibles. Prudent : il demande tout.">Autonomie</button>
   <button class="btn" id="voicebtn" title="Choisir la voix de Jarvis">Voix</button>
   <button class="btn" id="mute" title="Couper ou rétablir la voix de Jarvis">Son on</button>
 </div>
@@ -408,7 +425,8 @@
   function fitOpts(extra) {
     const wide = window.innerWidth > 760;
     const right = wide && $("panels").children.length ? $("panels").offsetWidth + 90 : 120;
-    return Object.assign({ paddingTopLeft: [wide ? 110 : 30, 120], paddingBottomRight: [right, wide ? 150 : 200] }, extra);
+    const left = wide && $("leftcol").offsetHeight > 10 ? $("leftcol").offsetWidth + 80 : (wide ? 110 : 30);
+    return Object.assign({ paddingTopLeft: [left, 120], paddingBottomRight: [right, wide ? 150 : 200] }, extra);
   }
 
   async function showMap(a) {
@@ -736,6 +754,7 @@
         else if (a.type === "style") { revealMap(); setStyle(a.style); }
         else if (a.type === "zoom") zoomMap(a.action);
         else if (a.type === "home") goHome();
+        else if (a.type === "widgets") loadWidgets();
         else if (a.type === "panel") showPanel(a);
         else if (a.type === "weather") showWeather(a.meteo);
         else if (a.type === "system") showSystem(a.metriques);
@@ -889,6 +908,79 @@
     }
   });
 
+  // ---------- Widgets permanents ----------
+  const widgetTimers = [];
+  function wcard(w, title) {
+    const el = document.createElement("section"); el.className = "wcard";
+    const t = document.createElement("div"); t.className = "wt"; t.textContent = w.titre || title; el.appendChild(t);
+    const x = document.createElement("button"); x.className = "wx"; x.textContent = "✕"; x.setAttribute("aria-label", "Retirer ce widget");
+    x.onclick = async () => { await api("/api/widgets/remove", { id: w.id }).catch(() => {}); loadWidgets(); };
+    el.appendChild(x);
+    return el;
+  }
+  const div = (cls, text) => { const d = document.createElement("div"); d.className = cls; d.textContent = text; return d; };
+  function renderWidget(w) {
+    if (w.type === "meteo") {
+      const el = wcard(w, "Météo · " + w.lieu);
+      const big = div("big", "…"), sub = div("sub", "");
+      el.append(big, sub);
+      const refresh = () => fetch("/api/widget/meteo?lieu=" + encodeURIComponent(w.lieu)).then((r) => r.json()).then((d) => {
+        if (d.meteo) { big.textContent = d.meteo.temp + "°"; sub.textContent = `${d.meteo.etat} · ${d.meteo.jours[0].min}° / ${d.meteo.jours[0].max}°`; }
+        else sub.textContent = d.error || "indisponible";
+      }).catch(() => { sub.textContent = "indisponible"; });
+      refresh(); widgetTimers.push(setInterval(refresh, 30 * 60 * 1000));
+      return el;
+    }
+    if (w.type === "systeme") {
+      const el = wcard(w, "Mac");
+      const box = document.createElement("div"); el.appendChild(box);
+      const refresh = () => fetch("/api/widget/systeme").then((r) => r.json()).then((d) => {
+        box.textContent = "";
+        d.metriques.forEach((m) => {
+          const row = document.createElement("div"); row.className = "mini";
+          row.innerHTML = "<span></span><div class=bar><i></i></div><b></b>";
+          row.children[0].textContent = m.nom; row.querySelector("i").style.width = Math.min(100, m.valeur) + "%"; row.children[2].textContent = m.valeur + "%";
+          box.appendChild(row);
+        });
+      }).catch(() => {});
+      refresh(); widgetTimers.push(setInterval(refresh, 20000));
+      return el;
+    }
+    if (w.type === "horloge") {
+      const el = wcard(w, (w.fuseau || "").split("/").pop().replace(/_/g, " "));
+      const big = div("big", ""), sub = div("sub", ""); el.append(big, sub);
+      const tick = () => {
+        try {
+          const now = new Date();
+          big.textContent = now.toLocaleTimeString("fr-FR", { timeZone: w.fuseau, hour: "2-digit", minute: "2-digit" });
+          sub.textContent = now.toLocaleDateString("fr-FR", { timeZone: w.fuseau, weekday: "long", day: "numeric", month: "long" });
+        } catch (_) { sub.textContent = "fuseau inconnu"; }
+      };
+      tick(); widgetTimers.push(setInterval(tick, 1000));
+      return el;
+    }
+    if (w.type === "compte_a_rebours") {
+      const el = wcard(w, "Compte à rebours");
+      const target = new Date(w.date + "T00:00:00");
+      const days = Math.ceil((target - new Date()) / 86400000);
+      el.append(div("big", isNaN(days) ? "?" : days > 0 ? "J-" + days : days === 0 ? "Aujourd'hui" : "J+" + -days),
+        div("sub", isNaN(days) ? w.date : target.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })));
+      return el;
+    }
+    const el = wcard(w, "Note");
+    el.appendChild(div("note", w.texte || ""));
+    return el;
+  }
+  async function loadWidgets() {
+    try {
+      const d = await (await fetch("/api/widgets")).json();
+      widgetTimers.splice(0).forEach(clearInterval);
+      const box = $("widgets"); box.textContent = "";
+      d.widgets.forEach((w) => { try { box.appendChild(renderWidget(w)); } catch (e) { console.warn(e); } });
+    } catch (_) { /* serveur indisponible */ }
+  }
+  loadWidgets();
+
   // ---------- Mode épuré et masquage automatique des commandes ----------
   if (store.get("jarvis.clean") !== false) body.classList.add("clean");
   let idleTimer = null;
@@ -913,7 +1005,21 @@
     $("model").textContent = brain === "claude" ? "Claude" : localModel;
     $("brainbtn").textContent = brain === "claude" ? "Cerveau : Claude" : "Cerveau : local";
     $("brainbtn").classList.toggle("active", brain === "claude");
+    if (st.autonomie) {
+      autonomy = st.autonomie;
+      $("autobtn").textContent = autonomy === "proprietaire" ? "Propriétaire" : "Prudent";
+      $("autobtn").classList.toggle("active", autonomy === "proprietaire");
+    }
   }
+  let autonomy = "proprietaire";
+  $("autobtn").onclick = async () => {
+    try {
+      const st = await api("/api/settings", { autonomie: autonomy === "proprietaire" ? "prudent" : "proprietaire" });
+      showBrain(st);
+      speak(st.autonomie === "proprietaire" ? "Mode propriétaire. J'agis directement, sauf pour les actions sensibles."
+                                            : "Mode prudent. Je vous demanderai avant chaque commande.");
+    } catch (e) { addLine("error", e.message); }
+  };
   fetch("/api/status").then((r) => r.json()).then((s) => {
     showBrain(s); $("srv").textContent = "Système en ligne"; $("srvdot").className = "dot on";
   }).catch(() => { $("srv").textContent = "Serveur injoignable"; $("srvdot").className = "dot err"; });
@@ -927,7 +1033,7 @@
   };
 
   // ---------- Événements en direct (actions de Claude pendant qu'il travaille) ----------
-  const ACTIVITY = { WebSearch: "Recherche sur le web…", WebFetch: "Lecture d'une page web…", Read: "Lecture d'un fichier…",
+  const ACTIVITY = { executer_commande: "Action en cours…", WebSearch: "Recherche sur le web…", WebFetch: "Lecture d'une page web…", Read: "Lecture d'un fichier…",
     Glob: "Recherche de fichiers…", Grep: "Recherche dans les fichiers…" };
   let lastEvent = null;
   async function pollEvents() {

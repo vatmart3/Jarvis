@@ -20,6 +20,8 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
+import securite
+
 HUD_DIR = Path(__file__).resolve().parent
 OJ_HOME = Path(os.environ.get("OPENJARVIS_HOME", Path.home() / ".openjarvis"))
 APPROVAL_TIMEOUT = 180
@@ -35,9 +37,21 @@ style_carte, zoom_carte, accueil, afficher_panneau, meteo, minuteur, infos_syste
 rechercher_web (ouvre le navigateur), regler_volume, executer_commande.
 Sois visuel : dès qu'une réponse peut se montrer, montre-la, et enchaîne plusieurs outils si besoin.
 Pour toute information récente ou que tu ne connais pas, utilise WebSearch / WebFetch avant de répondre.
-Tu peux lire les fichiers (Read, Glob, Grep). Pour agir sur l'ordinateur (fichiers, applications, réglages), utilise
-mcp__hud__executer_commande : l'utilisateur valide chaque commande à l'écran ; explique-la en une phrase.
-Si une commande est refusée, n'insiste pas. N'invente jamais un résultat. Date et heure : {now}."""
+Tu peux lire les fichiers (Read, Glob, Grep). Pour agir sur l'ordinateur, utilise mcp__hud__executer_commande
+(zsh sur macOS) : mkdir, fichiers, open, osascript (AppleScript pour piloter Finder, Notes, Rappels, Calendrier, Musique,
+Safari, réglages…), shortcuts run (raccourcis de l'utilisateur), screencapture, etc.
+Tu peux aussi ajouter des widgets permanents sur ton propre écran avec mcp__hud__ajouter_widget.
+{autonomie}
+Pour déplacer ou copier, utilise mv -n / cp -n (jamais d'écrasement). Si une commande est refusée, n'insiste pas.
+N'invente jamais un résultat : vérifie ce que tu as fait. Date et heure : {now}."""
+
+AUTONOMIE = {
+    "proprietaire": ("MODE PROPRIÉTAIRE : l'utilisateur t'a confié son Mac. Agis directement comme s'il le faisait lui-même : "
+                     "ne demande pas de confirmation à l'oral, fais la tâche en entier puis dis ce que tu as fait. "
+                     "Les commandes sensibles (suppression, écrasement, sudo, envoi de messages, réglages système) "
+                     "déclenchent automatiquement une demande de validation à l'écran."),
+    "prudent": "MODE PRUDENT : l'utilisateur valide chaque commande à l'écran ; explique-la en une phrase.",
+}
 
 ALLOWED = "mcp__hud__*,Read,Glob,Grep,WebSearch,WebFetch"
 DISALLOWED = "Bash,Edit,Write,NotebookEdit"
@@ -77,8 +91,9 @@ class EventBus:
 
 
 class ClaudeBrain:
-    def __init__(self, port: int, token: str, execute_tool, run_shell, bus: EventBus) -> None:
+    def __init__(self, port: int, token: str, execute_tool, run_shell, bus: EventBus, get_autonomy=lambda: "prudent") -> None:
         self.port, self.token = port, token
+        self.get_autonomy = get_autonomy
         self.execute_tool, self.run_shell, self.bus = execute_tool, run_shell, bus
         self.session_id: str | None = None
         self.lock = threading.Lock()
@@ -101,6 +116,14 @@ class ClaudeBrain:
     def _shell_with_approval(self, args: dict) -> tuple[str, bool]:
         pid = uuid.uuid4().hex
         cmd = str(args.get("commande", ""))
+        risque = securite.analyser(cmd)
+        if self.get_autonomy() == "proprietaire" and risque is None:
+            self.bus.push("activity", outil="executer_commande")
+            result = self.run_shell(cmd)
+            self.bus.push("actions", actions=[{"type": "shell", "commande": cmd, "result": result}])
+            return result, False
+        if risque:
+            args = dict(args, explication=f"Action sensible ({risque}). " + str(args.get("explication", "")))
         slot = {"event": threading.Event(), "approve": False}
         self.approvals[pid] = slot
         self.bus.push("pending", pending={"id": pid, "commande": cmd, "explication": str(args.get("explication", ""))})
@@ -152,7 +175,7 @@ class ClaudeBrain:
             cmd = [claude, "-p", text.lstrip("-").strip() or "?", "--output-format", "stream-json", "--verbose",
                    "--mcp-config", self._mcp_config(), "--strict-mcp-config",
                    "--allowedTools", ALLOWED, "--disallowedTools", DISALLOWED,
-                   "--append-system-prompt", PROMPT.format(now=now), "--max-turns", "30"]
+                   "--append-system-prompt", PROMPT.format(now=now, autonomie=AUTONOMIE.get(self.get_autonomy(), AUTONOMIE["prudent"])), "--max-turns", "30"]
             if self.model:
                 cmd += ["--model", self.model]
             if self.session_id:
