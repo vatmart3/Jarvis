@@ -123,6 +123,25 @@
   .btn:hover, .btn:focus-visible { color: var(--cyan); border-color: var(--cyan-soft); outline: none; }
   .btn.active { color: var(--bg); background: var(--cyan); border-color: var(--cyan); }
 
+  /* ---------- Choix de la voix ---------- */
+  #voices { position: fixed; z-index: 470; left: 48px; bottom: 92px; width: min(560px, calc(100% - 300px)); max-height: 60vh; overflow: auto;
+    background: rgba(6, 12, 22, .96); border: 1px solid var(--cyan-soft); box-shadow: 0 0 30px rgba(73, 198, 255, .12); padding: 16px 18px;
+    display: none; }
+  body.voices-open #voices { display: block; }
+  body.voices-open #log { visibility: hidden; }
+  #voices h3 { margin: 14px 0 6px; font-family: var(--mono); font-weight: normal; font-size: 11px; letter-spacing: .2em; color: var(--muted); }
+  #voices h3:first-child { margin-top: 0; }
+  .voice { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; margin: 2px 0; background: none; border: 1px solid transparent;
+    color: var(--text); font-family: var(--sans); font-size: 17px; text-align: left; cursor: pointer; }
+  .voice:hover, .voice:focus-visible { border-color: var(--cyan-faint); outline: none; }
+  .voice.selected { border-color: var(--cyan); background: rgba(73, 198, 255, .08); }
+  .voice .tag { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; color: var(--cyan); border: 1px solid var(--cyan-faint); padding: 2px 6px; }
+  .voice .tag.best { color: var(--ok); border-color: rgba(77, 255, 184, .35); }
+  .voice .grow { flex: 1; }
+  .voice .play { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .voice[disabled] { opacity: .45; cursor: default; }
+  #voices .tip { margin: 14px 0 0; font-size: 14px; color: var(--muted); line-height: 1.4; }
+
   /* ---------- Validation ---------- */
   #confirm { position: fixed; z-index: 600; left: 50%; top: 50%; transform: translate(-50%, -50%) scale(.96); width: min(620px, calc(100% - 32px));
     background: rgba(6, 12, 22, .94); border: 1px solid var(--warn); box-shadow: 0 0 40px rgba(255, 181, 71, .18); padding: 26px 28px;
@@ -195,8 +214,10 @@
 <div id="bar">
   <input id="input" type="text" placeholder="Écris à Jarvis…  (touche /)" autocomplete="off" aria-label="Message pour Jarvis">
   <button class="btn" id="handsfree" title="Écoute permanente : dis « Jarvis » puis ta demande">Mains libres</button>
-  <button class="btn" id="mute" title="Couper ou rétablir la voix de Jarvis">Voix on</button>
+  <button class="btn" id="voicebtn" title="Choisir la voix de Jarvis">Voix</button>
+  <button class="btn" id="mute" title="Couper ou rétablir la voix de Jarvis">Son on</button>
 </div>
+<div id="voices" role="dialog" aria-label="Choisir la voix de Jarvis"></div>
 
 <div id="confirm" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
   <h2 id="confirm-title">AUTORISATION REQUISE</h2>
@@ -284,36 +305,136 @@
   };
 
   // ---------- Voix de Jarvis ----------
-  let voiceOn = true, frVoice = null;
+  let voiceOn = true, speakingNow = false;
   const synth = window.speechSynthesis;
-  function pickVoice() {
-    if (!synth) return;
-    const voices = synth.getVoices().filter((v) => /^fr/i.test(v.lang));
-    const pref = [/thomas/i, /premium|enhanced|amélioré/i, /fr-FR/i];
-    frVoice = voices.find((v) => pref[0].test(v.name) && pref[1].test(v.name))
-      || voices.find((v) => pref[1].test(v.name))
-      || voices.find((v) => pref[0].test(v.name))
-      || voices.find((v) => v.lang === "fr-FR") || voices[0] || null;
+  const player = new Audio();
+  let catalog = { kokoro: false, say: [] };
+  const store = {
+    get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (_) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) { /* stockage indisponible */ } },
+  };
+  let voiceChoice = store.get("jarvis.voice");
+  const QUALITY = /premium|enhanced|amélior|neural|natural/i;
+  const frBrowser = () => (synth ? synth.getVoices() : []).filter((v) => /^fr/i.test(v.lang));
+  const frSay = () => catalog.say.filter((v) => /^fr/i.test(v.lang));
+
+  function defaultChoice() {
+    if (catalog.kokoro) return { engine: "kokoro", voice: "ff_siwis" };
+    const say = frSay(), br = frBrowser();
+    const pick = say.find((v) => QUALITY.test(v.name));
+    if (pick) return { engine: "say", voice: pick.name };
+    const g = br.find((v) => /google/i.test(v.name)) || br.find((v) => QUALITY.test(v.name));
+    if (g) return { engine: "browser", voice: g.name };
+    if (br[0]) return { engine: "browser", voice: br[0].name };
+    if (say[0]) return { engine: "say", voice: say[0].name };
+    return { engine: "browser", voice: "" };
   }
-  if (synth) { pickVoice(); synth.onvoiceschanged = pickVoice; }
-  function speak(text) {
+  const currentChoice = () => voiceChoice || defaultChoice();
+
+  function stopSpeaking() {
+    if (synth) synth.cancel();
+    player.pause(); player.removeAttribute("src");
+  }
+  function speakBrowser(text, voiceName) {
     return new Promise((resolve) => {
-      if (!voiceOn || !synth || !text) return resolve();
-      synth.cancel();
+      if (!synth) return resolve();
       const u = new SpeechSynthesisUtterance(text);
-      u.lang = "fr-FR"; if (frVoice) u.voice = frVoice;
-      u.rate = 1.03; u.pitch = 0.95;
-      u.onstart = () => setState("speaking");
-      u.onend = u.onerror = () => { setState(null); resolve(); };
+      u.lang = "fr-FR";
+      const v = (synth.getVoices() || []).find((x) => x.name === voiceName) || frBrowser()[0];
+      if (v) u.voice = v;
+      u.rate = 1.0;
+      u.onend = u.onerror = () => resolve();
       synth.speak(u);
     });
   }
+  async function speakServer(text, choice) {
+    const slow = setTimeout(() => addLine("action", "Chargement de la voix… (la première fois peut prendre une minute)"), 2500);
+    let res;
+    try {
+      res = await fetch("/api/tts", { method: "POST", headers: { "Content-Type": "application/json", "X-Jarvis": "1" },
+        body: JSON.stringify({ engine: choice.engine, voice: choice.voice, text }) });
+    } finally { clearTimeout(slow); }
+    if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || "Voix indisponible."); }
+    const url = URL.createObjectURL(await res.blob());
+    await new Promise((resolve) => {
+      player.onended = player.onerror = player.onpause = () => resolve();
+      player.src = url;
+      player.play().catch(() => resolve());
+    });
+    URL.revokeObjectURL(url);
+  }
+  async function speak(text, choice) {
+    if (!voiceOn || !text) return;
+    choice = choice || currentChoice();
+    stopSpeaking();
+    speakingNow = true; setState("speaking");
+    try {
+      if (choice.engine === "browser") await speakBrowser(text, choice.voice);
+      else await speakServer(text, choice);
+    } catch (e) {
+      addLine("error", e.message);
+      await speakBrowser(text, "");
+    } finally {
+      speakingNow = false;
+      if (body.classList.contains("speaking")) setState(null);
+    }
+  }
   $("mute").onclick = () => {
     voiceOn = !voiceOn;
-    $("mute").textContent = voiceOn ? "Voix on" : "Voix off";
+    $("mute").textContent = voiceOn ? "Son on" : "Son off";
     $("mute").classList.toggle("active", !voiceOn);
-    if (!voiceOn && synth) synth.cancel();
+    if (!voiceOn) stopSpeaking();
   };
+
+  // ---------- Choix de la voix ----------
+  const SAMPLE = "Bonjour monsieur. Tous les systèmes sont opérationnels. Que puis-je faire pour vous ?";
+  const same = (a, b) => a && b && a.engine === b.engine && a.voice === b.voice;
+  function voiceItem(choice, label, tags, disabled) {
+    const b = document.createElement("button");
+    b.className = "voice" + (same(choice, currentChoice()) ? " selected" : "");
+    b.disabled = !!disabled;
+    const name = document.createElement("span"); name.className = "grow"; name.textContent = label;
+    b.appendChild(name);
+    for (const [t, best] of tags) { const g = document.createElement("span"); g.className = "tag" + (best ? " best" : ""); g.textContent = t; b.appendChild(g); }
+    const play = document.createElement("span"); play.className = "play"; play.textContent = disabled ? "" : "▶ écouter";
+    b.appendChild(play);
+    if (!disabled) b.onclick = () => { voiceChoice = choice; store.set("jarvis.voice", choice); renderVoices(); speak(SAMPLE, choice); };
+    return b;
+  }
+  function renderVoices() {
+    const box = $("voices"); box.textContent = "";
+    const h = (t) => { const e = document.createElement("h3"); e.textContent = t; box.appendChild(e); };
+    h("VOIX NEURONALE LOCALE");
+    box.appendChild(voiceItem({ engine: "kokoro", voice: "ff_siwis" }, catalog.kokoro ? "Siwis" : "Siwis — non installée",
+      [["NEURONALE", true], ["FÉMININE", false]], !catalog.kokoro));
+    const say = frSay();
+    if (say.length) {
+      h("VOIX MACOS");
+      say.sort((a, b) => QUALITY.test(b.name) - QUALITY.test(a.name)).forEach((v) =>
+        box.appendChild(voiceItem({ engine: "say", voice: v.name }, v.name, QUALITY.test(v.name) ? [["PREMIUM", true]] : [], false)));
+    }
+    const br = frBrowser();
+    if (br.length) {
+      h("VOIX DU NAVIGATEUR");
+      br.forEach((v) => box.appendChild(voiceItem({ engine: "browser", voice: v.name }, v.name,
+        /google/i.test(v.name) ? [["EN LIGNE", false]] : QUALITY.test(v.name) ? [["PREMIUM", true]] : [], false)));
+    }
+    const tip = document.createElement("p"); tip.className = "tip";
+    tip.textContent = "Clique sur une voix pour l'écouter et la choisir. Voix plus naturelles gratuites : Réglages Système → Accessibilité → "
+      + "Contenu énoncé → Voix du système → Gérer les voix → Français, puis télécharge une voix « Premium » et rouvre ce panneau.";
+    box.appendChild(tip);
+  }
+  async function loadVoices() {
+    try { catalog = await (await fetch("/api/voices")).json(); } catch (_) { /* serveur indisponible */ }
+  }
+  $("voicebtn").onclick = async () => {
+    const open = !body.classList.contains("voices-open");
+    body.classList.toggle("voices-open", open);
+    $("voicebtn").classList.toggle("active", open);
+    if (open) { await loadVoices(); renderVoices(); }
+  };
+  loadVoices();
+  if (synth) synth.onvoiceschanged = () => { if (body.classList.contains("voices-open")) renderVoices(); };
 
   // ---------- API locale ----------
   let busy = false, pending = null;
@@ -409,12 +530,12 @@
     rec.onend = () => {
       recActive = false; setInterim("");
       if (body.classList.contains("listening")) setState(null);
-      if (handsFree) setTimeout(() => { if (handsFree && !recActive && !(synth && synth.speaking)) startRec(); }, 250);
+      if (handsFree) setTimeout(() => { if (handsFree && !recActive && !speakingNow) startRec(); }, 250);
     };
   }
   function startRec() {
     if (!rec || recActive) return;
-    if (synth && synth.speaking) synth.cancel();
+    if (speakingNow) stopSpeaking();
     rec.continuous = handsFree;
     try { rec.start(); } catch (_) { /* déjà démarré */ }
   }
@@ -436,8 +557,8 @@
   // En mains libres, on coupe le micro pendant que Jarvis parle (évite qu'il s'entende).
   setInterval(() => {
     if (!handsFree || !rec) return;
-    if (synth && synth.speaking && recActive) rec.abort();
-    else if (!(synth && synth.speaking) && !recActive && !busy) startRec();
+    if (speakingNow && recActive) rec.abort();
+    else if (!speakingNow && !recActive && !busy) startRec();
   }, 600);
 
   $("orb").onclick = toggleListen;
@@ -458,7 +579,9 @@
     if (document.activeElement === input) return;
     if (e.code === "Space") { e.preventDefault(); toggleListen(); }
     else if (e.key === "/") { e.preventDefault(); input.focus(); }
-    else if (e.key === "Escape" && synth) synth.cancel();
+    else if (e.key === "Escape") {
+      if (body.classList.contains("voices-open")) $("voicebtn").click(); else stopSpeaking();
+    }
   });
 
   // ---------- Statut ----------

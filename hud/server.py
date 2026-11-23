@@ -380,6 +380,70 @@ class Session:
 SESSION = Session()
 
 
+
+# --------------------------------------------------------------------------
+# Voix (synthèse côté serveur)
+# --------------------------------------------------------------------------
+
+_kokoro = None
+_kokoro_lock = threading.Lock()
+
+
+def kokoro_available() -> bool:
+    """Kokoro (voix neuronale locale d'OpenJarvis) est-il installé ?"""
+    import importlib.util
+
+    try:
+        return bool(importlib.util.find_spec("kokoro")) and bool(
+            importlib.util.find_spec("openjarvis.speech.kokoro_tts")
+        )
+    except (ImportError, ValueError):
+        return False
+
+
+def say_voices() -> list[dict]:
+    """Voix macOS (commande say), françaises en premier."""
+    if not IS_MAC:
+        return []
+    ok, out = _run(["say", "-v", "?"])
+    if not ok:
+        return []
+    voices = []
+    for line in out.splitlines():
+        m = re.match(r"^(.+?)\s+([a-z]{2}[_-][A-Z]{2})\s+#", line)
+        if m:
+            name, lang = m.group(1).strip(), m.group(2).replace("_", "-")
+            voices.append({"name": name, "lang": lang})
+    voices.sort(key=lambda v: (not v["lang"].startswith("fr"), v["name"]))
+    return voices
+
+
+def tts_say(text: str, voice: str, rate: int) -> bytes:
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "voix.wav"
+        args = ["say", "-o", str(out), "--file-format=WAVE", "--data-format=LEI16@22050", "-r", str(rate)]
+        if voice:
+            args += ["-v", voice]
+        proc = subprocess.run(args + ["--", text], capture_output=True, text=True, timeout=120)
+        if proc.returncode != 0 or not out.exists():
+            raise RuntimeError(proc.stderr.strip() or "say a échoué")
+        return out.read_bytes()
+
+
+def tts_kokoro(text: str, voice: str, speed: float) -> bytes:
+    global _kokoro
+    with _kokoro_lock:
+        if _kokoro is None:
+            from openjarvis.speech.kokoro_tts import KokoroTTSBackend
+
+            _kokoro = KokoroTTSBackend()
+        result = _kokoro.synthesize(text, voice_id=voice or "ff_siwis", speed=speed, output_format="wav")
+    if not result.audio:
+        raise RuntimeError("Kokoro n'a produit aucun son.")
+    return result.audio
+
 # --------------------------------------------------------------------------
 # HTTP
 # --------------------------------------------------------------------------
@@ -416,6 +480,8 @@ class Handler(BaseHTTPRequestHandler):
         path = urllib.parse.urlparse(self.path).path
         if path == "/api/status":
             return self._json(200, {"model": MODEL, "ollama": OLLAMA, "mac": IS_MAC})
+        if path == "/api/voices":
+            return self._json(200, {"kokoro": kokoro_available(), "say": say_voices()})
         if path in STATIC:
             name, ctype = STATIC[path]
             return self._send(200, (HUD_DIR / name).read_bytes(), ctype)
@@ -440,6 +506,22 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, SESSION.ask(text))
             if path == "/api/confirm":
                 return self._json(200, SESSION.confirm(str(data.get("id", "")), bool(data.get("approve"))))
+            if path == "/api/tts":
+                text = str(data.get("text", "")).strip()[:3000]
+                engine = data.get("engine")
+                voice = str(data.get("voice", ""))
+                if not text:
+                    return self._json(400, {"error": "Texte vide."})
+                try:
+                    if engine == "kokoro":
+                        audio = tts_kokoro(text, voice, float(data.get("speed", 1.0)))
+                    elif engine == "say" and IS_MAC:
+                        audio = tts_say(text, voice, int(data.get("rate", 185)))
+                    else:
+                        return self._json(400, {"error": "Moteur de voix inconnu."})
+                except Exception as exc:  # noqa: BLE001 - renvoyé à l'interface
+                    return self._json(500, {"error": f"Synthèse vocale impossible : {exc}"})
+                return self._send(200, audio, "audio/wav")
             if path == "/api/reset":
                 with SESSION.lock:
                     SESSION.reset()

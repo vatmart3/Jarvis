@@ -75,8 +75,12 @@ Elle utilise le même modèle local qu'OpenJarvis (lu dans `~/.openjarvis/config
 - Le modèle `qwen3.5:9b` comprend bien mieux les demandes d'action que `qwen3.5:4b`.
 - Chrome demandera l'accès au micro la première fois : accepte.
 - La reconnaissance vocale de Chrome envoie l'audio aux serveurs de Google. Le modèle, lui, reste local.
-- Pour une plus belle voix : Réglages Système → Accessibilité → Contenu énoncé → Voix du système →
-  Gérer les voix → Français → télécharge « Thomas (Premium) » ou « Audrey (Premium) ».
+- **Changer de voix** : bouton « Voix » en bas de l'écran → clique sur une voix pour l'écouter et la garder.
+  - Voix macOS « Premium » (gratuites, naturelles) : Réglages Système → Accessibilité → Contenu énoncé →
+    Voix du système → Gérer les voix → Français → télécharge « Audrey (Premium) » ou « Thomas (Premium) ».
+  - Voix neuronale locale **Siwis** (optionnelle, ~2 Go à télécharger) :
+    `cd ~/.openjarvis/src && uv pip install --python ~/.openjarvis/.venv/bin/python -e '.[voice]'`
+    puis relance le HUD (`pkill -f hud/server.py` puis le lanceur).
 - La carte et la recherche de lieux utilisent internet (OpenStreetMap / CARTO).
 
 ## Personnaliser
