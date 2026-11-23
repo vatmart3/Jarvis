@@ -303,17 +303,73 @@ def meteo_info(lieu: str):
     return info, place
 
 
+# Grandes villes pour la carte météo de France (coordonnées fixes : aucune recherche à faire)
+VILLES_FRANCE = [
+    ("Lille", 50.63, 3.06), ("Paris", 48.86, 2.35), ("Strasbourg", 48.58, 7.75), ("Brest", 48.39, -4.49),
+    ("Rennes", 48.11, -1.68), ("Caen", 49.18, -0.37), ("Reims", 49.26, 4.03), ("Nantes", 47.22, -1.55),
+    ("Orléans", 47.90, 1.91), ("Dijon", 47.32, 5.04), ("Limoges", 45.83, 1.26), ("Lyon", 45.76, 4.84),
+    ("Clermont-Ferrand", 45.78, 3.08), ("Grenoble", 45.19, 5.72), ("Bordeaux", 44.84, -0.58), ("Toulouse", 43.60, 1.44),
+    ("Biarritz", 43.48, -1.56), ("Montpellier", 43.61, 3.88), ("Marseille", 43.30, 5.37), ("Nice", 43.70, 7.27),
+    ("Perpignan", 42.70, 2.90), ("Ajaccio", 41.93, 8.74),
+]
+
+
+def _en_france(lat: float, lon: float) -> bool:
+    return 41.2 <= lat <= 51.2 and -5.3 <= lon <= 9.7
+
+
+def meteo_villes(villes: list[tuple]) -> list[dict]:
+    """Météo actuelle de plusieurs villes en une seule requête Open-Meteo."""
+    q = urllib.parse.urlencode({
+        "latitude": ",".join(f"{v[1]:.3f}" for v in villes), "longitude": ",".join(f"{v[2]:.3f}" for v in villes),
+        "current": "temperature_2m,weather_code,precipitation,wind_speed_10m", "timezone": "auto",
+    })
+    data = _get_json("https://api.open-meteo.com/v1/forecast?" + q)
+    if isinstance(data, dict):
+        data = [data]
+    out = []
+    for v, d in zip(villes, data):
+        cur = d.get("current", {})
+        out.append({"nom": v[0], "lat": v[1], "lon": v[2], "temp": round(cur.get("temperature_2m", 0)),
+                    "code": cur.get("weather_code", 0), "pluie": cur.get("precipitation", 0),
+                    "vent": round(cur.get("wind_speed_10m", 0)), "etat": WEATHER.get(cur.get("weather_code", 0), "?")})
+    return out
+
+
 def t_meteo(args: dict):
     lieu = str(args.get("lieu", "")).strip()
-    info, place = meteo_info(lieu)
-    if info is None:
-        return place, []
-    txt = (f"Météo à {lieu} : {info['temp']} °C (ressenti {info['ressenti']} °C), {info['etat']}, vent {info['vent']} km/h, "
-           f"humidité {info['humidite']} %. Prévisions : "
-           + "; ".join(f"{j['date']} {j['etat']} {j['min']}–{j['max']} °C" for j in jours[1:]) + ".")
-    pt = dict(place, nom=lieu)
-    return txt, [{"type": "weather", "meteo": info},
-                 {"type": "map", "titre": lieu, "points": [pt], "relier": False, "zone": None, "silencieux": True}]
+    actions, morceaux, focus = [], [], None
+    if lieu and lieu.lower() not in ("france", "la france"):
+        info, place = meteo_info(lieu)
+        if info is None:
+            return place, []
+        focus = dict(place, nom=lieu)
+        actions.append({"type": "weather", "meteo": info})
+        morceaux.append(
+            f"Météo à {lieu} : {info['temp']} °C (ressenti {info['ressenti']} °C), {info['etat']}, vent {info['vent']} km/h, "
+            f"humidité {info['humidite']} %. Prévisions : "
+            + "; ".join(f"{j['date']} {j['etat']} {j['min']}–{j['max']} °C" for j in info["jours"][1:]) + ".")
+    if focus is None or _en_france(focus["lat"], focus["lon"]):
+        villes = list(VILLES_FRANCE)
+        if focus and not any(v[0].lower() == focus["nom"].lower() for v in villes):
+            villes.append((focus["nom"], focus["lat"], focus["lon"]))
+        try:
+            meteo = meteo_villes(villes)
+        except Exception:  # noqa: BLE001
+            meteo = []
+        if meteo:
+            actions.append({"type": "meteo_carte", "titre": "Météo · France", "villes": meteo, "zone": zone_outline("France"),
+                            "focus": focus["nom"] if focus else None, "radar": True})
+            pluie = [m["nom"] for m in meteo if m["pluie"] and m["pluie"] > 0 or m["code"] >= 51]
+            chaud, froid = max(meteo, key=lambda m: m["temp"]), min(meteo, key=lambda m: m["temp"])
+            morceaux.append(f"En France : de {froid['temp']} °C à {froid['nom']} à {chaud['temp']} °C à {chaud['nom']} ; "
+                            + (f"pluie ou averses à {', '.join(pluie[:8])}." if pluie else "pas de pluie notable sur les grandes villes.")
+                            + " Carte et radar de pluie affichés.")
+        elif not focus:
+            return "Service météo injoignable.", []
+    else:
+        actions.append({"type": "map", "titre": lieu, "points": [focus], "relier": False, "zone": None, "radar": True})
+    return " ".join(morceaux), actions
 
 
 def _run(args: list[str]) -> str:
@@ -400,8 +456,9 @@ TOOLS = [
         ["titre", "lignes"]),
     _fn("minuteur", "Lance un minuteur visible à l'écran, qui prévient à la fin.",
         {"secondes": {"type": "integer"}, "libelle": {"type": "string"}}, ["secondes"]),
-    _fn("meteo", "Donne la météo actuelle et les prévisions d'un lieu, et l'affiche à l'écran.",
-        {"lieu": {"type": "string"}}, ["lieu"]),
+    _fn("meteo", "Météo : affiche la carte de France animée (villes, températures, radar de pluie) et, si un lieu est donné, "
+                 "son détail et ses prévisions. Sans lieu : vue d'ensemble de la France.",
+        {"lieu": {"type": "string"}}, []),
     _fn("infos_systeme", "Affiche l'état de l'ordinateur : batterie, disque, mémoire, processeur.", {}, []),
 ]
 

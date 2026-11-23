@@ -192,6 +192,30 @@
     transition: opacity .8s; text-align: center; }
   body.map-on #hint, body.hint-off #hint { opacity: 0; pointer-events: none; }
 
+  /* ---------- Carte météo ---------- */
+  .leaflet-radar-pane { filter: saturate(1.25) brightness(1.1); }
+  .wx-pin { display: flex; flex-direction: column; align-items: center; transform: translate(-50%, -50%); width: 96px;
+    animation: spop .6s cubic-bezier(.2, 1.5, .4, 1) both; animation-delay: var(--d); pointer-events: none; }
+  .wx-pin .ic { width: 38px; height: 38px; color: var(--t); filter: drop-shadow(0 0 8px var(--t)); }
+  .wx-pin b { font-family: var(--sans); font-weight: 500; font-size: 20px; color: var(--t); text-shadow: 0 0 10px var(--t), 0 1px 4px #000; line-height: 1; margin-top: -2px; }
+  .wx-pin i { font-style: normal; font-family: var(--mono); font-size: 10px; letter-spacing: .12em; color: var(--text); text-transform: uppercase; text-shadow: 0 1px 4px #000; margin-top: 2px; }
+  .wx-pin.focus { transform: translate(-50%, -50%) scale(1.35); z-index: 5; }
+  .wx-pin.focus::before { content: ""; position: absolute; top: 2px; width: 46px; height: 46px; border-radius: 50%; border: 1px solid var(--t); animation: ping 1.8s ease-out infinite; }
+  .ic .ray { transform-origin: 12px 12px; animation: spin 18s linear infinite; }
+  .ic .drop { animation: drop 1s linear infinite; }
+  .ic .drop:nth-of-type(2) { animation-delay: .33s; } .ic .drop:nth-of-type(3) { animation-delay: .66s; }
+  @keyframes drop { 0% { transform: translateY(-3px); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateY(5px); opacity: 0; } }
+  .ic .bolt { animation: blink 1.6s steps(1) infinite; }
+  .ic .flake { animation: drop 2s linear infinite; }
+  .ic .cloudm { animation: drift 6s ease-in-out infinite alternate; }
+  @keyframes drift { from { transform: translateX(-1px); } to { transform: translateX(1.5px); } }
+  #radartag { position: fixed; z-index: 452; left: 50%; bottom: 34px; transform: translateX(-50%); font-family: var(--mono); font-size: 11px;
+    letter-spacing: .2em; color: var(--cyan); opacity: 0; transition: opacity .5s; pointer-events: none; display: flex; align-items: center; gap: 10px; }
+  #radartag.show { opacity: .9; }
+  #radartag .bar { width: 160px; height: 3px; background: rgba(73, 198, 255, .15); }
+  #radartag .bar i { display: block; height: 100%; width: 0; background: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
+  body:not(.ui-idle) #radartag { bottom: 96px; }
+
   /* ---------- Schémas animés (schema.js) ---------- */
   #stage { position: fixed; z-index: 430; opacity: 0; pointer-events: none; transition: opacity .6s; }
   body.stage-on #stage { opacity: 1; pointer-events: auto; }
@@ -334,7 +358,8 @@
 <div id="scan"></div>
 <div id="maptitle"></div>
 <div id="panels" aria-live="polite"></div>
-<div id="leftcol"><div id="timers"></div><div id="widgets"></div></div>
+<div id="leftcol"><div id="radartag"><span>RADAR PLUIE</span><span class="bar"><i></i></span><span class="t"></span></div>
+<div id="timers"></div><div id="widgets"></div></div>
 <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
 
 <div id="clock"><div class="time" id="time">--:--:--</div><div class="date" id="date"></div></div>
@@ -378,6 +403,7 @@
   <input id="input" type="text" placeholder="Écris à Jarvis…  (touche /)" autocomplete="off" aria-label="Message pour Jarvis">
   <button class="btn" id="handsfree" title="Écoute permanente : dis « Jarvis » puis ta demande">Mains libres</button>
   <button class="btn" id="brainbtn" title="Changer de cerveau : Claude (abonnement Claude) ou modèle local">Cerveau</button>
+  <button class="btn" id="speedbtn" title="Vitesse de Claude : Rapide (Haiku), Équilibré (Sonnet), Puissant (Opus)">Vitesse</button>
   <button class="btn" id="autobtn" title="Propriétaire : Jarvis agit seul, sauf actions sensibles. Prudent : il demande tout.">Autonomie</button>
   <button class="btn" id="voicebtn" title="Choisir la voix de Jarvis">Voix</button>
   <button class="btn" id="mute" title="Couper ou rétablir la voix de Jarvis">Son on</button>
@@ -483,7 +509,8 @@
 
   async function showMap(a) {
     if (!map) return;
-    hideSchema();
+    hideSchema(); stopRadar();
+    if (a.radar) setTimeout(startRadar, 1400);
     revealMap();
     layer.clearLayers();
     const pts = a.points || [];
@@ -511,7 +538,7 @@
   }
   function showRoute(a) {
     if (!map) return;
-    hideSchema();
+    hideSchema(); stopRadar();
     revealMap();
     layer.clearLayers();
     if (a.km != null) routeCard(a);
@@ -552,16 +579,97 @@
     };
     body.classList.add("hint-off");
     setTitle(a.titre, SCHEMA_KIND[a.genre_schema] || "schéma");
+    stopRadar();
     JarvisSchema.show(a, { padding, sound: () => voiceOn });
   }
   function hideSchema() { if (window.JarvisSchema && JarvisSchema.active()) { JarvisSchema.hide(); if (!body.classList.contains("map-on")) setTitle(""); } }
 
   function goHome() {
-    hideSchema();
+    hideSchema(); stopRadar();
     body.classList.remove("map-on");
     setTitle("");
     if (layer) layer.clearLayers();
     document.querySelectorAll("#panels .card").forEach(closeCard);
+  }
+
+  // ---------- Carte météo ----------
+  const CLOUD = '<path class="cloudm" d="M7 18h10a4 4 0 0 0 .4-7.98A5.5 5.5 0 0 0 6.6 11.3 3.4 3.4 0 0 0 7 18z"/>';
+  const ICONS = {
+    soleil: '<circle cx="12" cy="12" r="4.2"/><g class="ray">' + [0, 45, 90, 135, 180, 225, 270, 315].map((a) => `<line x1="12" y1="2.5" x2="12" y2="5" transform="rotate(${a} 12 12)"/>`).join("") + "</g>",
+    eclaircie: '<g transform="translate(4 -3) scale(.7)"><circle cx="12" cy="12" r="4"/><g class="ray">' + [0, 60, 120, 180, 240, 300].map((a) => `<line x1="12" y1="3" x2="12" y2="5.2" transform="rotate(${a} 12 12)"/>`).join("") + "</g></g>" + CLOUD,
+    nuage: CLOUD,
+    brouillard: '<line x1="4" y1="9" x2="20" y2="9"/><line x1="6" y1="13" x2="18" y2="13"/><line x1="4" y1="17" x2="20" y2="17"/>',
+    pluie: '<g transform="translate(0 -3)">' + CLOUD + '</g><line class="drop" x1="9" y1="17" x2="8" y2="20"/><line class="drop" x1="13" y1="17" x2="12" y2="20"/><line class="drop" x1="17" y1="17" x2="16" y2="20"/>',
+    neige: '<g transform="translate(0 -3)">' + CLOUD + '</g><circle class="flake" cx="9" cy="19" r=".9"/><circle class="flake" cx="13" cy="20" r=".9"/><circle class="flake" cx="16" cy="18.5" r=".9"/>',
+    orage: '<g transform="translate(0 -3)">' + CLOUD + '</g><path class="bolt" d="M12.5 15l-2 3.5h2.5l-1.5 3.5"/>',
+  };
+  const wxCat = (c) => c <= 1 ? "soleil" : c === 2 ? "eclaircie" : c === 3 ? "nuage" : c <= 48 ? "brouillard" : c >= 95 ? "orage" : (c >= 71 && c <= 77) || c === 85 || c === 86 ? "neige" : "pluie";
+  // Échelle de température : bleu (froid) → blanc → jaune → orange → rouge (chaud)
+  const TSTOPS = [[-5, [154, 184, 255]], [4, [73, 198, 255]], [12, [216, 244, 255]], [19, [255, 226, 122]], [26, [255, 165, 60]], [33, [255, 93, 108]]];
+  const tempColor = (t) => {
+    let i = 0; while (i < TSTOPS.length - 2 && t > TSTOPS[i + 1][0]) i++;
+    const [t0, c0] = TSTOPS[i], [t1, c1] = TSTOPS[i + 1], k = Math.max(0, Math.min(1, (t - t0) / (t1 - t0)));
+    return `rgb(${c0.map((v, j) => Math.round(v + (c1[j] - v) * k)).join(",")})`;
+  };
+  const wxIcon = (code) => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${ICONS[wxCat(code)]}</svg>`;
+
+  let radarLayers = [], radarTimer = null;
+  function stopRadar() {
+    clearInterval(radarTimer); radarTimer = null;
+    radarLayers.forEach((l) => l.remove()); radarLayers = [];
+    $("radartag").classList.remove("show");
+  }
+  async function startRadar() {
+    stopRadar();
+    if (!map) return;
+    try {
+      if (!map.getPane("radar")) { const pane = map.createPane("radar"); pane.style.zIndex = 350; pane.classList.add("leaflet-radar-pane"); pane.style.pointerEvents = "none"; }
+      const d = await (await fetch("https://api.rainviewer.com/public/weather-maps.json")).json();
+      const frames = [...(d.radar?.past || []), ...(d.radar?.nowcast || [])].slice(-12);
+      if (!frames.length) return;
+      radarLayers = frames.map((f) => L.tileLayer(`${d.host}${f.path}/256/{z}/{x}/{y}/4/1_1.png`,
+        { pane: "radar", opacity: 0, maxNativeZoom: 7, maxZoom: 19, attribution: 'Radar &copy; <a href="https://www.rainviewer.com/">RainViewer</a>' }).addTo(map));
+      const tag = $("radartag"); tag.classList.add("show");
+      let i = 0;
+      const show = () => {
+        radarLayers.forEach((l, k) => l.setOpacity(k === i ? 0.75 : 0));
+        const t = new Date(frames[i].time * 1000);
+        tag.querySelector(".t").textContent = t.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) + (frames[i].time * 1000 > Date.now() ? " · PRÉVISION" : "");
+        tag.querySelector(".bar i").style.width = ((i + 1) / frames.length) * 100 + "%";
+        i = (i + 1) % frames.length;
+      };
+      show();
+      radarTimer = setInterval(show, 650);
+    } catch (e) { console.warn("Radar indisponible", e); }
+  }
+
+  function showWeatherMap(a) {
+    if (!map) return;
+    hideSchema(); stopRadar(); revealMap();
+    layer.clearLayers();
+    let bounds;
+    if (a.zone) {
+      const rings = a.zone.coordinates.map((poly) => poly.map((ring) => ring.map(([lon, lat]) => [lat, lon])));
+      L.polygon(rings, { className: "zone", interactive: false }).addTo(layer);
+      bounds = bboxBounds(a.zone.bbox);
+    } else bounds = L.latLngBounds(a.villes.map((v) => [v.lat, v.lon]));
+    map.flyToBounds(bounds, fitOpts({ duration: 2.2, maxZoom: 7 }));
+    // Évite les chevauchements : la ville demandée d'abord, puis on écarte celles trop proches d'une ville déjà placée.
+    const isFocus = (v) => a.focus && v.nom.toLowerCase() === String(a.focus).toLowerCase();
+    const opts = fitOpts({}), z = map.getBoundsZoom(bounds, false, L.point(opts.paddingTopLeft).add(opts.paddingBottomRight));
+    const kept = [];
+    [...a.villes].sort((x, y) => isFocus(y) - isFocus(x)).forEach((v) => {
+      const p = map.project([v.lat, v.lon], z);
+      if (kept.every((k) => k.p.distanceTo(p) > 62)) kept.push({ v, p });
+    });
+    setTitle(a.titre, `${kept.length} villes${a.radar ? " · radar de pluie" : ""}`);
+    kept.map((k) => k.v).sort((x, y) => y.lat - x.lat).forEach((v, i) => {
+      const focus = isFocus(v);
+      const html = `<div class="wx-pin${focus ? " focus" : ""}" style="--d:${1000 + i * 120}ms;--t:${tempColor(v.temp)}">${wxIcon(v.code)}<b>${v.temp}°</b><i></i></div>`;
+      const m = L.marker([v.lat, v.lon], { icon: L.divIcon({ className: "", html, iconSize: [0, 0] }), interactive: false, zIndexOffset: focus ? 1000 : 0 }).addTo(layer);
+      const el = m.getElement && m.getElement(); if (el) el.querySelector("i").textContent = v.nom;
+    });
+    if (a.radar) setTimeout(startRadar, 1400);
   }
 
   // ---------- Panneaux ----------
@@ -825,6 +933,7 @@
         else if (a.type === "zoom") zoomMap(a.action);
         else if (a.type === "home") goHome();
         else if (a.type === "schema") showSchema(a);
+        else if (a.type === "meteo_carte") showWeatherMap(a);
         else if (a.type === "widgets") loadWidgets();
         else if (a.type === "panel") showPanel(a);
         else if (a.type === "weather") showWeather(a.meteo);
@@ -1076,13 +1185,23 @@
     $("model").textContent = brain === "claude" ? "Claude" : localModel;
     $("brainbtn").textContent = brain === "claude" ? "Cerveau : Claude" : "Cerveau : local";
     $("brainbtn").classList.toggle("active", brain === "claude");
+    if (st.vitesse) { speed = st.vitesse; $("speedbtn").textContent = SPEEDS[speed]; }
     if (st.autonomie) {
       autonomy = st.autonomie;
       $("autobtn").textContent = autonomy === "proprietaire" ? "Propriétaire" : "Prudent";
       $("autobtn").classList.toggle("active", autonomy === "proprietaire");
     }
   }
-  let autonomy = "proprietaire";
+  let autonomy = "proprietaire", speed = "equilibre";
+  const SPEEDS = { rapide: "Rapide", equilibre: "Équilibré", puissant: "Puissant" };
+  $("speedbtn").onclick = async () => {
+    const order = ["rapide", "equilibre", "puissant"];
+    try {
+      const st = await api("/api/settings", { vitesse: order[(order.indexOf(speed) + 1) % 3] });
+      showBrain(st);
+      speak({ rapide: "Mode rapide.", equilibre: "Mode équilibré.", puissant: "Mode puissant : plus lent, mais plus réfléchi." }[st.vitesse]);
+    } catch (e) { addLine("error", e.message); }
+  };
   $("autobtn").onclick = async () => {
     try {
       const st = await api("/api/settings", { autonomie: autonomy === "proprietaire" ? "prudent" : "proprietaire" });

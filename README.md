@@ -72,6 +72,10 @@ curl -fsSL https://claude.ai/install.sh | bash
 
 Puis tape `claude`, connecte-toi avec ton compte Claude dans le navigateur, et quitte avec `/exit`.
 
+**Vitesse :** les demandes simples (météo, carte d'un lieu, minuteur, volume, ouvrir une app, heure, satellite, zoom,
+accueil, état du Mac) sont traitées instantanément, sans passer par Claude. Pour le reste, le bouton **Rapide / Équilibré /
+Puissant** choisit le modèle Claude (Haiku, Sonnet ou Opus) : « Équilibré » par défaut.
+
 Le bouton **« Cerveau »** bascule entre Claude et le modèle local d'Ollama (gratuit, hors ligne, moins intelligent).
 Avec Claude, les requêtes comptent dans les limites de ton abonnement.
 
@@ -136,7 +140,9 @@ Les boutons et le statut se cachent après 4 secondes sans bouger la souris, et 
 - « Montre-moi un tour de l'Italie : Rome, Florence, Venise, Milan » → villes numérotées et reliées
 - « Trajet de Sète à Paris » → itinéraire réel tracé, distance et durée
 - « Passe en vue satellite », « zoome », « montre le monde », « reviens à l'accueil »
-- « Quel temps fait-il à Montpellier ? » → panneau météo et prévisions sur 3 jours
+- « Quelle est la météo ? », « quel temps fait-il à Sète ? » → la France s'affiche avec 20 villes (icônes animées,
+  températures en couleur du froid au chaud), le radar de pluie animé des deux dernières heures par-dessus,
+  et le détail de la ville demandée avec ses prévisions sur 3 jours
 - « Mets un minuteur de 10 minutes pour les pâtes » → compte à rebours à l'écran, annonce à la fin
 - « Comment va mon Mac ? » → jauges batterie, disque, mémoire, processeur
 - « Donne-moi 5 idées de sorties ce week-end » → panneau avec la liste

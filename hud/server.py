@@ -39,6 +39,7 @@ import securite  # noqa: E402
 import widgets  # noqa: E402
 import telephone  # noqa: E402
 import schemas  # noqa: E402
+import rapide  # noqa: E402
 import secrets  # noqa: E402
 
 HUD_DIR = Path(__file__).resolve().parent
@@ -397,6 +398,20 @@ class Session:
 
 
 SESSION = Session()
+rapide.ouvrir_application = tool_ouvrir_application
+rapide.regler_volume = tool_regler_volume
+
+
+def chemin_rapide(text: str) -> dict | None:
+    """Demandes simples traitées sans le modèle (réponse quasi instantanée)."""
+    try:
+        r = rapide.route(text)
+    except Exception:  # noqa: BLE001 - en cas de doute, le cerveau prend le relais
+        return None
+    if r is None:
+        return None
+    reply, actions = r
+    return {"reply": reply, "actions": actions, "pending": None, "rapide": True}
 
 
 def execute_tool(name: str, args: dict) -> tuple[str, list[dict]]:
@@ -438,6 +453,14 @@ def current_autonomy() -> str:
     return "prudent" if load_settings().get("autonomie") == "prudent" else "proprietaire"
 
 
+VITESSES = {"rapide": "haiku", "equilibre": "sonnet", "puissant": "opus"}
+
+
+def current_speed() -> str:
+    v = load_settings().get("vitesse")
+    return v if v in VITESSES else "equilibre"
+
+
 def current_brain() -> str:
     choice = load_settings().get("cerveau")
     if choice in ("local", "claude"):
@@ -477,7 +500,10 @@ def ordre_telephone(texte: str) -> None:
         return
     BUS.push("activity", outil="telephone")
     try:
-        if current_brain() == "claude":
+        fast = chemin_rapide(texte)
+        if fast:
+            res = fast
+        elif current_brain() == "claude":
             res = BRAIN.ask(CONTEXTE_TELEPHONE + texte)
         else:
             res = SESSION.ask(texte)
@@ -506,7 +532,8 @@ def write_token() -> None:
     except OSError:
         pass
 BUS = cerveau_claude.EventBus()
-BRAIN = cerveau_claude.ClaudeBrain(PORT, INTERNAL_TOKEN, execute_tool, run_shell, BUS, current_autonomy)
+BRAIN = cerveau_claude.ClaudeBrain(PORT, INTERNAL_TOKEN, execute_tool, run_shell, BUS, current_autonomy,
+                                   lambda: VITESSES[current_speed()])
 
 
 
@@ -610,7 +637,7 @@ class Handler(BaseHTTPRequestHandler):
         path = urllib.parse.urlparse(self.path).path
         if path == "/api/status":
             return self._json(200, {"model": MODEL, "ollama": OLLAMA, "mac": IS_MAC, "cerveau": current_brain(),
-                                    "autonomie": current_autonomy(), "claude": bool(cerveau_claude.find_claude()),
+                                    "autonomie": current_autonomy(), "vitesse": current_speed(), "claude": bool(cerveau_claude.find_claude()),
                                     "reveil": time.time() - WAKE_AT[0] < 15})
         if path == "/api/events":
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
@@ -673,6 +700,9 @@ class Handler(BaseHTTPRequestHandler):
                 text = str(data.get("text", "")).strip()
                 if not text:
                     return self._json(400, {"error": "Message vide."})
+                fast = chemin_rapide(text)
+                if fast:
+                    return self._json(200, fast)
                 if current_brain() == "claude":
                     res = BRAIN.ask(text)
                     return self._json(502 if "error" in res else 200, res)
@@ -691,8 +721,10 @@ class Handler(BaseHTTPRequestHandler):
                     st["cerveau"] = data["cerveau"]
                 if data.get("autonomie") in ("prudent", "proprietaire"):
                     st["autonomie"] = data["autonomie"]
+                if data.get("vitesse") in VITESSES:
+                    st["vitesse"] = data["vitesse"]
                 save_settings(st)
-                return self._json(200, {"cerveau": current_brain(), "autonomie": current_autonomy(),
+                return self._json(200, {"cerveau": current_brain(), "autonomie": current_autonomy(), "vitesse": current_speed(),
                                         "claude": bool(cerveau_claude.find_claude())})
             if path == "/api/tts":
                 text = str(data.get("text", "")).strip()[:3000]

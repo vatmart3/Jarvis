@@ -97,9 +97,10 @@ class EventBus:
 
 
 class ClaudeBrain:
-    def __init__(self, port: int, token: str, execute_tool, run_shell, bus: EventBus, get_autonomy=lambda: "prudent") -> None:
+    def __init__(self, port: int, token: str, execute_tool, run_shell, bus: EventBus, get_autonomy=lambda: "prudent",
+                 get_model=lambda: "") -> None:
         self.port, self.token = port, token
-        self.get_autonomy = get_autonomy
+        self.get_autonomy, self.get_model = get_autonomy, get_model
         self.execute_tool, self.run_shell, self.bus = execute_tool, run_shell, bus
         self.session_id: str | None = None
         self.lock = threading.Lock()
@@ -182,8 +183,9 @@ class ClaudeBrain:
                    "--mcp-config", self._mcp_config(), "--strict-mcp-config",
                    "--allowedTools", ALLOWED, "--disallowedTools", DISALLOWED,
                    "--append-system-prompt", PROMPT.format(now=now, autonomie=AUTONOMIE.get(self.get_autonomy(), AUTONOMIE["prudent"])), "--max-turns", "30"]
-            if self.model:
-                cmd += ["--model", self.model]
+            model = self.model or self.get_model()
+            if model:
+                cmd += ["--model", model]
             if self.session_id:
                 cmd += ["--resume", self.session_id]
             env = dict(os.environ)
