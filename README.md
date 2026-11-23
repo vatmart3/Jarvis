@@ -45,6 +45,40 @@ Ouvre un **nouveau terminal** après l'installation, puis :
 | `jarvis self-update` | Mettre OpenJarvis à jour |
 | `jarvis-uninstall` | Tout désinstaller |
 
+## Jarvis HUD : interface vocale plein écran
+
+Interface façon film : orbe lumineux, carte sombre, horloge. Tu parles à Jarvis et il agit sur ton Mac.
+Elle utilise le même modèle local qu'OpenJarvis (lu dans `~/.openjarvis/config.toml`).
+
+**Lancer :** double-clique sur `hud/lancer-jarvis.command` dans le Finder, ou :
+
+```bash
+~/jarvis-kit/hud/lancer-jarvis.command
+```
+
+| Action | Comment |
+|---|---|
+| Parler | Clique sur l'orbe ou appuie sur **Espace**, puis parle |
+| Mains libres | Bouton « Mains libres », puis dis « **Jarvis**, … » quand tu veux |
+| Écrire | Touche **/** puis Entrée |
+| Couper sa voix | Bouton « Voix on/off », ou Échap pendant qu'il parle |
+| Arrêter | `pkill -f hud/server.py` |
+
+**Ce que Jarvis peut faire sur ton ordinateur :**
+
+- sans demander : ouvrir une application, une page web ou une recherche, régler le volume, afficher un lieu sur la carte ;
+- **avec ta validation** (fenêtre orange, réponds « oui » ou « non ») : exécuter une commande dans le Terminal
+  (trouver un fichier, ranger un dossier, connaître l'espace disque…).
+
+**Bon à savoir :**
+
+- Le modèle `qwen3.5:9b` comprend bien mieux les demandes d'action que `qwen3.5:4b`.
+- Chrome demandera l'accès au micro la première fois : accepte.
+- La reconnaissance vocale de Chrome envoie l'audio aux serveurs de Google. Le modèle, lui, reste local.
+- Pour une plus belle voix : Réglages Système → Accessibilité → Contenu énoncé → Voix du système →
+  Gérer les voix → Français → télécharge « Thomas (Premium) » ou « Audrey (Premium) ».
+- La carte et la recherche de lieux utilisent internet (OpenStreetMap / CARTO).
+
 ## Personnaliser
 
 Modifie `config/config.toml` puis relance `./install.sh` (ou édite directement `~/.openjarvis/config.toml`).
