@@ -20,6 +20,8 @@ temperature = 0.7
 [agent]
 default_agent = "simple"             # conversation simple, sans outils
 # default_agent = "orchestrator"     # choisit des outils automatiquement
+# Consigne donnée au modèle à chaque conversation (évite qu'il réponde dans une autre langue)
+default_system_prompt = "Tu es Jarvis, un assistant IA qui fonctionne en local sur l'ordinateur de l'utilisateur. Réponds toujours en français, de façon claire, utile et concise, sauf si on te demande explicitement une autre langue."
 
 [server]
 host = "127.0.0.1"                   # accessible uniquement depuis ta machine
