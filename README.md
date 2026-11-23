@@ -60,6 +60,24 @@ Ensuite, plus besoin du Terminal : ouvre **Jarvis** depuis le Launchpad, le Dock
 L'installeur propose aussi de l'ajouter au Dock et de l'ouvrir au démarrage du Mac.
 Pour tout retirer : `./hud/installer-app.sh --desinstaller`.
 
+### Le cerveau : Claude (recommandé) ou modèle local
+
+Par défaut, Jarvis utilise **Claude via Claude Code**, avec ton abonnement Claude (Pro ou Max) : **aucune clé API**.
+Il peut alors chercher sur le web, lire tes fichiers, enchaîner les actions et répondre à n'importe quelle question.
+Installation, une seule fois, dans le Terminal :
+
+```bash
+curl -fsSL https://claude.ai/install.sh | bash
+```
+
+Puis tape `claude`, connecte-toi avec ton compte Claude dans le navigateur, et quitte avec `/exit`.
+
+Le bouton **« Cerveau »** bascule entre Claude et le modèle local d'Ollama (gratuit, hors ligne, moins intelligent).
+Avec Claude, les requêtes comptent dans les limites de ton abonnement.
+
+**Sécurité :** Claude peut lire tes fichiers et chercher sur le web, mais ne peut **ni modifier ni supprimer** quoi que ce soit
+directement. Toute commande sur l'ordinateur passe par la fenêtre orange et attend ton « oui ».
+
 ### Utiliser
 
 | Action | Comment |
@@ -84,8 +102,8 @@ Pour tout retirer : `./hud/installer-app.sh --desinstaller`.
 
 **Bon à savoir :**
 
-- Le modèle `qwen3.5:9b` comprend bien mieux les demandes d'action que `qwen3.5:4b`.
-- Cartes, lieux, météo et itinéraires utilisent des services gratuits sans clé (OpenStreetMap, CARTO, Esri, Open-Meteo, OSRM) :
+- En cerveau local, le modèle `qwen3.5:9b` comprend bien mieux les demandes d'action que `qwen3.5:4b`.
+- Cartes, lieux, météo et itinéraires utilisent des services gratuits sans clé (Esri, OpenStreetMap, Open-Meteo, OSRM) :
   il faut internet pour eux, mais le modèle reste local.
 - Chrome demandera l'accès au micro la première fois : accepte.
 - La reconnaissance vocale de Chrome envoie l'audio aux serveurs de Google. Le modèle, lui, reste local.

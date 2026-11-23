@@ -29,6 +29,7 @@
   #map { position: fixed; inset: 0; background: var(--bg); opacity: 0; transition: opacity 1.6s ease; }
   body.map-on #map { opacity: 1; }
   .leaflet-tile-pane { filter: sepia(1) hue-rotate(170deg) saturate(3.2) brightness(.82) contrast(1.15); transition: filter 1s; }
+  body.style-osmdark .leaflet-tile-pane { filter: invert(1) grayscale(1) sepia(1) hue-rotate(170deg) saturate(2.6) brightness(.62) contrast(1.25); }
   body.style-satellite .leaflet-tile-pane { filter: saturate(.75) brightness(.8) contrast(1.1); }
   body.style-plan .leaflet-tile-pane { filter: none; }
   .zone { stroke: var(--cyan); stroke-width: 2; fill: rgba(73, 198, 255, .07); filter: drop-shadow(0 0 6px var(--cyan));
@@ -257,7 +258,7 @@
 <div id="clock"><div class="time" id="time">--:--:--</div><div class="date" id="date"></div></div>
 <div id="status">
   <div><span class="dot" id="srvdot"></span><span id="srv">Connexion…</span></div>
-  <div>Modèle <b id="model">—</b></div>
+  <div>Cerveau <b id="model">—</b></div>
   <div>Micro <b id="micmode">appuyer pour parler</b></div>
 </div>
 
@@ -292,6 +293,7 @@
 <div id="bar">
   <input id="input" type="text" placeholder="Écris à Jarvis…  (touche /)" autocomplete="off" aria-label="Message pour Jarvis">
   <button class="btn" id="handsfree" title="Écoute permanente : dis « Jarvis » puis ta demande">Mains libres</button>
+  <button class="btn" id="brainbtn" title="Changer de cerveau : Claude (abonnement Claude) ou modèle local">Cerveau</button>
   <button class="btn" id="voicebtn" title="Choisir la voix de Jarvis">Voix</button>
   <button class="btn" id="mute" title="Couper ou rétablir la voix de Jarvis">Son on</button>
 </div>
@@ -336,17 +338,28 @@
 
   // ---------- Carte ----------
   let map = null, layer = null, tiles = null, currentStyle = "sombre";
+  // Fonds de carte gratuits sans clé. « sombre » : Esri Dark Gray, repli automatique sur OpenStreetMap inversé.
+  const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/";
+  const OSM_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
   const TILES = {
-    sombre: ["https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'],
-    plan: ["https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'],
-    satellite: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", "Imagerie &copy; Esri, Maxar, Earthstar Geographics"],
+    sombre: { url: ESRI + "Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", labels: ESRI + "Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}", max: 16, attr: "Fond &copy; Esri" },
+    osmdark: { url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png", max: 19, attr: OSM_ATTR },
+    plan: { url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png", max: 19, attr: OSM_ATTR },
+    satellite: { url: ESRI + "World_Imagery/MapServer/tile/{z}/{y}/{x}", labels: ESRI + "Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", max: 19, attr: "Imagerie &copy; Esri, Maxar, Earthstar Geographics" },
   };
+  let labelTiles = null, tileErrors = 0, tileOk = 0;
   function setStyle(name) {
     if (!map || !TILES[name]) return;
     currentStyle = name;
+    const t = TILES[name];
     if (tiles) tiles.remove();
-    tiles = L.tileLayer(TILES[name][0], { maxZoom: 19, subdomains: "abcd", attribution: TILES[name][1] }).addTo(map);
-    body.classList.remove("style-sombre", "style-satellite", "style-plan");
+    if (labelTiles) { labelTiles.remove(); labelTiles = null; }
+    tileErrors = 0; tileOk = 0;
+    tiles = L.tileLayer(t.url, { maxZoom: 19, maxNativeZoom: t.max, attribution: t.attr }).addTo(map);
+    tiles.on("tileload", () => { tileOk++; });
+    tiles.on("tileerror", () => { if (++tileErrors > 6 && tileOk === 0 && name === "sombre") setStyle("osmdark"); });
+    if (t.labels) labelTiles = L.tileLayer(t.labels, { maxZoom: 19, maxNativeZoom: t.max, pane: "overlayPane", opacity: 0.85 }).addTo(map);
+    body.classList.remove("style-sombre", "style-satellite", "style-plan", "style-osmdark");
     body.classList.add("style-" + name);
   }
   try {
@@ -684,10 +697,10 @@
     if (!res.ok || json.error) throw new Error(json.error || `Erreur ${res.status}`);
     return json;
   }
-  async function handleResult(r) {
+  function applyActions(list) {
     // Panneaux d'abord : la carte se cadre ensuite dans l'espace libre.
     const first = new Set(["panel", "weather", "system", "timer"]);
-    const acts = (r.actions || []).map((a, i) => [a, i]).sort((x, y) => (first.has(y[0].type) - first.has(x[0].type)) || x[1] - y[1]).map((x) => x[0]);
+    const acts = (list || []).map((a, i) => [a, i]).sort((x, y) => (first.has(y[0].type) - first.has(x[0].type)) || x[1] - y[1]).map((x) => x[0]);
     for (const a of acts) {
       try {
         if (a.type === "map") showMap(a);
@@ -703,13 +716,17 @@
         else if (a.type === "shell") addLine("action", "$ " + a.commande + "\n" + a.result);
       } catch (e) { console.warn("Action impossible", a, e); }
     }
+  }
+  async function handleResult(r) {
+    applyActions(r.actions);
     if (r.pending) return openConfirm(r.pending);
     if (r.reply) { addLine("jarvis", r.reply); await speak(r.reply); }
   }
   async function send(text) {
     text = (text || "").trim();
-    if (!text || busy) return;
+    if (!text) return;
     if (pending) return answerConfirmByVoice(text);
+    if (busy) { addLine("action", "Un instant, je termine la demande en cours…"); return; }
     addLine("user", text);
     busy = true; setState("thinking");
     try { await handleResult(await api("/api/ask", { text })); }
@@ -732,10 +749,13 @@
     const p = pending; pending = null;
     body.classList.remove("confirm");
     addLine("action", approve ? "✓ Commande autorisée" : "✗ Commande refusée");
-    busy = true; setState("thinking");
-    try { await handleResult(await api("/api/confirm", { id: p.id, approve })); }
-    catch (e) { addLine("error", e.message); }
-    finally { busy = false; if (body.classList.contains("thinking")) setState(null); }
+    try {
+      const r = await api("/api/confirm", { id: p.id, approve });
+      if (r.async) { setState("thinking"); return; } // Claude continue de travailler de son côté
+      busy = true; setState("thinking");
+      await handleResult(r);
+    } catch (e) { addLine("error", e.message); }
+    finally { if (busy) { busy = false; if (body.classList.contains("thinking")) setState(null); } }
   }
   function answerConfirmByVoice(text) {
     const t = text.toLowerCase();
@@ -811,7 +831,7 @@
   setInterval(() => {
     if (!handsFree || !rec) return;
     if (speakingNow && recActive) rec.abort();
-    else if (!speakingNow && !recActive && !busy) startRec();
+    else if (!speakingNow && !recActive && (!busy || pending)) startRec();
   }, 600);
 
   $("orb").onclick = toggleListen;
@@ -837,10 +857,44 @@
     }
   });
 
-  // ---------- Statut ----------
+  // ---------- Statut et cerveau ----------
+  let brain = "local", localModel = "";
+  function showBrain(st) {
+    brain = st.cerveau; if (st.model) localModel = st.model;
+    $("model").textContent = brain === "claude" ? "Claude" : localModel;
+    $("brainbtn").textContent = brain === "claude" ? "Cerveau : Claude" : "Cerveau : local";
+    $("brainbtn").classList.toggle("active", brain === "claude");
+  }
   fetch("/api/status").then((r) => r.json()).then((s) => {
-    $("model").textContent = s.model; $("srv").textContent = "Système en ligne"; $("srvdot").className = "dot on";
+    showBrain(s); $("srv").textContent = "Système en ligne"; $("srvdot").className = "dot on";
   }).catch(() => { $("srv").textContent = "Serveur injoignable"; $("srvdot").className = "dot err"; });
+  $("brainbtn").onclick = async () => {
+    try {
+      const st = await api("/api/settings", { cerveau: brain === "claude" ? "local" : "claude" });
+      if (st.cerveau === "claude" && !st.claude) addLine("error", "Claude Code n'est pas encore installé sur ce Mac : voir le guide (README).");
+      showBrain(st);
+      addLine("action", st.cerveau === "claude" ? "Cerveau : Claude (via ton abonnement Claude)" : `Cerveau : modèle local ${localModel}`);
+    } catch (e) { addLine("error", e.message); }
+  };
+
+  // ---------- Événements en direct (actions de Claude pendant qu'il travaille) ----------
+  const ACTIVITY = { WebSearch: "Recherche sur le web…", WebFetch: "Lecture d'une page web…", Read: "Lecture d'un fichier…",
+    Glob: "Recherche de fichiers…", Grep: "Recherche dans les fichiers…" };
+  let lastEvent = null;
+  async function pollEvents() {
+    try {
+      const r = await (await fetch("/api/events?after=" + (lastEvent ?? 0))).json();
+      if (lastEvent === null) { lastEvent = r.last; return; } // ignore l'historique au démarrage
+      for (const e of r.events) {
+        lastEvent = Math.max(lastEvent, e.id);
+        if (e.type === "actions") applyActions(e.actions);
+        else if (e.type === "pending") openConfirm(e.pending);
+        else if (e.type === "pending_closed" && pending && pending.id === e.id) { pending = null; body.classList.remove("confirm"); }
+        else if (e.type === "activity" && ACTIVITY[e.outil]) addLine("action", "▸ " + ACTIVITY[e.outil]);
+      }
+    } catch (_) { /* serveur momentanément indisponible */ }
+  }
+  setInterval(pollEvents, 600); pollEvents();
   if (!SR) $("micmode").textContent = "indisponible (Chrome/Safari)";
 })();
 </script>

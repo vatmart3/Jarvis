@@ -33,6 +33,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import outils  # noqa: E402
+import cerveau_claude  # noqa: E402
+import secrets  # noqa: E402
 
 HUD_DIR = Path(__file__).resolve().parent
 PORT = int(os.environ.get("JARVIS_HUD_PORT", "3000"))
@@ -381,6 +383,47 @@ class Session:
 SESSION = Session()
 
 
+def execute_tool(name: str, args: dict) -> tuple[str, list[dict]]:
+    """Exécute un outil non sensible ; renvoie (texte pour le modèle, actions d'interface)."""
+    if name in DIRECT_TOOLS:
+        result = DIRECT_TOOLS[name](args)
+        return result, [{"type": "tool", "name": name, "args": args, "result": result}]
+    if name in outils.HANDLERS:
+        return outils.HANDLERS[name](args)
+    return f"Outil inconnu : {name}", []
+
+
+# Réglages persistants (cerveau choisi)
+SETTINGS_PATH = Path(os.environ.get("OPENJARVIS_HOME", Path.home() / ".openjarvis")) / "hud.json"
+
+
+def load_settings() -> dict:
+    try:
+        return json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def save_settings(data: dict) -> None:
+    try:
+        SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        SETTINGS_PATH.write_text(json.dumps(data), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def current_brain() -> str:
+    choice = load_settings().get("cerveau")
+    if choice in ("local", "claude"):
+        return choice
+    return "claude" if cerveau_claude.find_claude() else "local"
+
+
+INTERNAL_TOKEN = secrets.token_hex(16)
+BUS = cerveau_claude.EventBus()
+BRAIN = cerveau_claude.ClaudeBrain(PORT, INTERNAL_TOKEN, execute_tool, run_shell, BUS)
+
+
 
 # --------------------------------------------------------------------------
 # Voix (synthèse côté serveur)
@@ -481,7 +524,20 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(403, b"Forbidden", "text/plain")
         path = urllib.parse.urlparse(self.path).path
         if path == "/api/status":
-            return self._json(200, {"model": MODEL, "ollama": OLLAMA, "mac": IS_MAC})
+            return self._json(200, {"model": MODEL, "ollama": OLLAMA, "mac": IS_MAC, "cerveau": current_brain(),
+                                    "claude": bool(cerveau_claude.find_claude())})
+        if path == "/api/events":
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            try:
+                last = int(q.get("after", ["0"])[0])
+            except ValueError:
+                last = 0
+            events, newest = BUS.after(last)
+            return self._json(200, {"events": events, "last": newest})
+        if path == "/api/internal/tools":
+            if not secrets.compare_digest(self.headers.get("X-Jarvis-Token", ""), INTERNAL_TOKEN):
+                return self._send(403, b"Forbidden", "text/plain")
+            return self._json(200, {"tools": TOOLS})
         if path == "/api/voices":
             return self._json(200, {"kokoro": kokoro_available(), "say": say_voices()})
         if path in STATIC:
@@ -498,22 +554,43 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         # En-tête personnalisé obligatoire : un autre site ne peut pas l'envoyer
         # sans requête préalable CORS, que ce serveur n'accepte jamais.
-        if not self._host_ok() or self.headers.get("X-Jarvis") != "1":
+        path = urllib.parse.urlparse(self.path).path
+        internal = path.startswith("/api/internal/")
+        if not self._host_ok():
+            return self._send(403, b"Forbidden", "text/plain")
+        if internal:
+            if not secrets.compare_digest(self.headers.get("X-Jarvis-Token", ""), INTERNAL_TOKEN):
+                return self._send(403, b"Forbidden", "text/plain")
+        elif self.headers.get("X-Jarvis") != "1":
             return self._send(403, b"Forbidden", "text/plain")
         try:
             length = min(int(self.headers.get("Content-Length", "0")), 100_000)
             data = json.loads(self.rfile.read(length) or b"{}")
         except (ValueError, json.JSONDecodeError):
             return self._json(400, {"error": "Requête invalide."})
-        path = urllib.parse.urlparse(self.path).path
         try:
+            if path == "/api/internal/tool":
+                text, is_error = BRAIN.tool_call(str(data.get("name", "")), data.get("args") or {})
+                return self._json(200, {"text": text, "is_error": is_error})
             if path == "/api/ask":
                 text = str(data.get("text", "")).strip()
                 if not text:
                     return self._json(400, {"error": "Message vide."})
+                if current_brain() == "claude":
+                    res = BRAIN.ask(text)
+                    return self._json(502 if "error" in res else 200, res)
                 return self._json(200, SESSION.ask(text))
             if path == "/api/confirm":
-                return self._json(200, SESSION.confirm(str(data.get("id", "")), bool(data.get("approve"))))
+                pid, approve = str(data.get("id", "")), bool(data.get("approve"))
+                if BRAIN.confirm(pid, approve):
+                    return self._json(200, {"reply": "", "actions": [], "pending": None, "async": True})
+                return self._json(200, SESSION.confirm(pid, approve))
+            if path == "/api/settings":
+                if data.get("cerveau") in ("local", "claude"):
+                    st = load_settings()
+                    st["cerveau"] = data["cerveau"]
+                    save_settings(st)
+                return self._json(200, {"cerveau": current_brain(), "claude": bool(cerveau_claude.find_claude())})
             if path == "/api/tts":
                 text = str(data.get("text", "")).strip()[:3000]
                 engine = data.get("engine")
@@ -533,6 +610,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/reset":
                 with SESSION.lock:
                     SESSION.reset()
+                BRAIN.reset()
                 return self._json(200, {"ok": True})
         except OllamaError as exc:
             return self._json(502, {"error": str(exc)})
@@ -541,7 +619,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    print(f"Jarvis HUD : http://localhost:{PORT}  (modèle : {MODEL}, Ollama : {OLLAMA})")
+    print(f"Jarvis HUD : http://localhost:{PORT}  (cerveau : {current_brain()}, modèle local : {MODEL})")
     print("Ctrl+C pour arrêter.")
     try:
         server.serve_forever()
