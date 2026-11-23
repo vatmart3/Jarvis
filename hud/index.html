@@ -192,6 +192,57 @@
     transition: opacity .8s; text-align: center; }
   body.map-on #hint, body.hint-off #hint { opacity: 0; pointer-events: none; }
 
+  /* ---------- Schémas animés (schema.js) ---------- */
+  #stage { position: fixed; z-index: 430; opacity: 0; pointer-events: none; transition: opacity .6s; }
+  body.stage-on #stage { opacity: 1; pointer-events: auto; }
+  body.stage-on #map { opacity: .18; }
+  body.stage-on #vignette { background: radial-gradient(ellipse at center, rgba(2, 6, 12, .55) 30%, rgba(0, 0, 0, .85) 100%); }
+  #stagesvg { width: 100%; height: 100%; overflow: visible; }
+  .stage-x { position: absolute; top: -8px; right: -8px; background: none; border: 0; color: var(--muted); font-size: 14px; cursor: pointer; padding: 6px; }
+  .stage-x:hover, .stage-x:focus-visible { color: var(--cyan); outline: none; }
+  body.ui-idle .stage-x { opacity: 0; }
+  body.stage-on #orb { left: calc(100% - 130px); top: calc(100% - 140px); width: 150px; height: 150px; }
+  body.stage-on #hint { opacity: 0; }
+  body.stage-on #activity { left: calc(100% - 130px); top: calc(100% - 52px); font-size: 10px; }
+  body.stage-on #maptitle.show { opacity: 1; }
+  body.stage-scan #scan { animation: scan 1.4s ease-out; }
+  .s-pop { opacity: 0; animation: spop .55s cubic-bezier(.2, 1.4, .4, 1) both; transform-box: fill-box; transform-origin: center; }
+  @keyframes spop { 0% { opacity: 0; transform: scale(.3); } 60% { opacity: 1; } 100% { opacity: 1; transform: scale(1); } }
+  .s-box { fill: url(#s-fill); stroke: var(--c); stroke-width: 1.6; filter: drop-shadow(0 0 7px var(--c)); }
+  .s-box.s-big { stroke-width: 2.4; filter: drop-shadow(0 0 16px var(--c)); }
+  .s-corner { fill: none; stroke: #fff; stroke-width: 2.4; opacity: .85; }
+  .s-flash { fill: var(--c); opacity: 0; animation: sflash .9s ease-out both; animation-delay: inherit; pointer-events: none; }
+  .s-pop .s-flash { animation-delay: inherit; }
+  @keyframes sflash { 0% { opacity: .55; } 100% { opacity: 0; } }
+  .s-label { font-family: var(--sans); font-weight: 600; font-size: 17px; fill: var(--text); letter-spacing: .02em; }
+  .s-label.big { font-size: 22px; letter-spacing: .08em; text-transform: uppercase; }
+  .s-detail { font-family: var(--sans); font-size: 13px; fill: var(--muted); }
+  .s-edge { fill: none; stroke: var(--c, var(--cyan)); stroke-width: 2; opacity: .85; filter: drop-shadow(0 0 4px var(--c, var(--cyan))); }
+  .s-edge.s-arc { stroke-width: 2.6; }
+  .s-arrowhead { fill: var(--cyan); }
+  .s-particle { fill: #fff; filter: drop-shadow(0 0 6px var(--c)) drop-shadow(0 0 3px var(--c)); }
+  .s-elabel { opacity: 0; animation: sfade .5s ease both; }
+  .s-elabel rect { fill: rgba(3, 10, 20, .92); stroke: var(--cyan-faint); }
+  .s-elabel text { font-family: var(--mono); font-size: 12px; fill: var(--cyan); }
+  .s-axis { fill: none; stroke: var(--cyan-soft); stroke-width: 2; }
+  .s-grid { fill: none; stroke: rgba(73, 198, 255, .1); stroke-dasharray: 3 6; opacity: 0; animation: sfade .6s ease both; }
+  .s-tick { font-family: var(--mono); font-size: 12px; fill: var(--muted); opacity: 0; animation: sfade .6s ease both; }
+  .s-dot { fill: var(--bg); stroke: var(--c); stroke-width: 3; filter: drop-shadow(0 0 6px var(--c)); opacity: 0; animation: spop .5s cubic-bezier(.2, 1.6, .4, 1) both; transform-box: fill-box; transform-origin: center; }
+  .s-date { font-family: var(--mono); font-size: 13px; letter-spacing: .12em; fill: var(--cyan); opacity: 0; animation: sfade .5s ease both; }
+  .s-fade { opacity: 0; animation: sfade .6s ease both; }
+  @keyframes sfade { from { opacity: 0; } to { opacity: 1; } }
+  .s-bar { fill: var(--c); fill-opacity: .28; stroke: var(--c); stroke-width: 1.5; filter: drop-shadow(0 0 8px var(--c)); transform-box: view-box;
+    animation: sgrow .8s cubic-bezier(.2, .9, .3, 1) both; }
+  @keyframes sgrow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+  .s-bartop { fill: var(--c); filter: drop-shadow(0 0 6px var(--c)); opacity: 0; animation: sfade .3s ease both; }
+  .s-cval { font-family: var(--mono); font-size: 15px; fill: var(--text); }
+  .s-clabel { font-family: var(--sans); font-weight: 600; font-size: 15px; fill: var(--text); opacity: 0; animation: sfade .5s ease both; }
+  .s-area { fill: url(#s-areafill); opacity: 0; animation: sfade 1s ease both; }
+  .s-line { stroke-width: 3; }
+  .s-ring-bg { fill: none; stroke: rgba(73, 198, 255, .08); stroke-width: 48; }
+  .s-seg { fill: none; stroke: var(--c); stroke-width: 46; filter: drop-shadow(0 0 8px var(--c)); }
+  .s-total { font-family: var(--sans); font-weight: 300; font-size: 44px; fill: var(--text); }
+
   /* ---------- Mode épuré (par défaut) : aucun texte de conversation à l'écran ---------- */
   body.clean #log { display: none; }
   #status, #bar { transition: opacity .6s ease; }
@@ -345,6 +396,7 @@
 </div>
 
 <script src="/vendor/leaflet/leaflet.js"></script>
+<script src="/schema.js"></script>
 <script>
 (() => {
   "use strict";
@@ -425,12 +477,13 @@
   function fitOpts(extra) {
     const wide = window.innerWidth > 760;
     const right = wide && $("panels").children.length ? $("panels").offsetWidth + 90 : 120;
-    const left = wide && $("leftcol").offsetHeight > 10 ? $("leftcol").offsetWidth + 80 : (wide ? 110 : 30);
+    const left = wide && ($("widgets").children.length || $("timers").children.length) ? $("leftcol").offsetWidth + 80 : (wide ? 110 : 30);
     return Object.assign({ paddingTopLeft: [left, 120], paddingBottomRight: [right, wide ? 150 : 200] }, extra);
   }
 
   async function showMap(a) {
     if (!map) return;
+    hideSchema();
     revealMap();
     layer.clearLayers();
     const pts = a.points || [];
@@ -458,6 +511,7 @@
   }
   function showRoute(a) {
     if (!map) return;
+    hideSchema();
     revealMap();
     layer.clearLayers();
     if (a.km != null) routeCard(a);
@@ -487,7 +541,23 @@
     else if (action === "arriere") map.zoomOut(1.5);
     else map.zoomIn(1.5);
   }
+  const SCHEMA_KIND = { flux: "schéma", mental: "carte mentale", chronologie: "chronologie", cycle: "cycle", graphique: "graphique" };
+  function showSchema(a) {
+    if (!window.JarvisSchema) return;
+    const wide = window.innerWidth > 760;
+    const padding = {
+      left: wide && ($("widgets").children.length || $("timers").children.length) ? $("leftcol").offsetWidth + 90 : (wide ? 70 : 20),
+      right: wide && $("panels").children.length ? $("panels").offsetWidth + 100 : (wide ? 70 : 20),
+      top: 120, bottom: wide ? 150 : 200,
+    };
+    body.classList.add("hint-off");
+    setTitle(a.titre, SCHEMA_KIND[a.genre_schema] || "schéma");
+    JarvisSchema.show(a, { padding, sound: () => voiceOn });
+  }
+  function hideSchema() { if (window.JarvisSchema && JarvisSchema.active()) { JarvisSchema.hide(); if (!body.classList.contains("map-on")) setTitle(""); } }
+
   function goHome() {
+    hideSchema();
     body.classList.remove("map-on");
     setTitle("");
     if (layer) layer.clearLayers();
@@ -754,6 +824,7 @@
         else if (a.type === "style") { revealMap(); setStyle(a.style); }
         else if (a.type === "zoom") zoomMap(a.action);
         else if (a.type === "home") goHome();
+        else if (a.type === "schema") showSchema(a);
         else if (a.type === "widgets") loadWidgets();
         else if (a.type === "panel") showPanel(a);
         else if (a.type === "weather") showWeather(a.meteo);

@@ -36,6 +36,9 @@ Tes outils d'interface (serveur MCP « hud ») : afficher_carte (zone surlignée
 style_carte, zoom_carte, accueil, afficher_panneau, meteo, minuteur, infos_systeme, ouvrir_application, ouvrir_url,
 rechercher_web (ouvre le navigateur), regler_volume, executer_commande.
 Sois visuel : dès qu'une réponse peut se montrer, montre-la, et enchaîne plusieurs outils si besoin.
+Pour expliquer un fonctionnement, un processus, une organisation, une comparaison, une histoire ou des chiffres, utilise
+mcp__hud__afficher_schema : l'écran le construit en animation sous les yeux de l'utilisateur. Textes courts dans les blocs,
+8 à 16 éléments idéalement, liens nommés quand c'est utile, groupes de couleur pour les familles d'éléments.
 Pour toute information récente ou que tu ne connais pas, utilise WebSearch / WebFetch avant de répondre.
 Tu peux lire les fichiers (Read, Glob, Grep). Pour agir sur l'ordinateur, utilise mcp__hud__executer_commande
 (zsh sur macOS) : mkdir, fichiers, open, osascript (AppleScript pour piloter Finder, Notes, Rappels, Calendrier, Musique,

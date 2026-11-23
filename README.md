@@ -140,6 +140,10 @@ Les boutons et le statut se cachent après 4 secondes sans bouger la souris, et 
 - « Mets un minuteur de 10 minutes pour les pâtes » → compte à rebours à l'écran, annonce à la fin
 - « Comment va mon Mac ? » → jauges batterie, disque, mémoire, processeur
 - « Donne-moi 5 idées de sorties ce week-end » → panneau avec la liste
+- « Fais-moi un schéma de comment fonctionne un site e-commerce » → les blocs apparaissent un à un, les flèches se tracent,
+  le texte s'écrit, puis des particules lumineuses circulent dans le schéma
+- « Une carte mentale pour lancer mon agence », « la chronologie de l'iPhone », « le cycle de l'eau »,
+  « un graphique de mes ventes de janvier à juin » (barres, courbe ou camembert, avec les valeurs qui défilent)
 - « Ouvre Spotify », « mets le volume à 30 », « cherche des recettes de risotto »
 - « Combien de place prend mon dossier Téléchargements ? » → commande Terminal, **exécutée seulement après ton « oui »**
 

@@ -38,6 +38,7 @@ import cerveau_claude  # noqa: E402
 import securite  # noqa: E402
 import widgets  # noqa: E402
 import telephone  # noqa: E402
+import schemas  # noqa: E402
 import secrets  # noqa: E402
 
 HUD_DIR = Path(__file__).resolve().parent
@@ -80,6 +81,7 @@ Tu contrôles un écran holographique plein écran et l'ordinateur grâce à tes
 - afficher_carte : carte animée, zone surlignée, plusieurs lieux nommés, lieux reliés ;
 - itineraire, style_carte (sombre, satellite, plan), zoom_carte, accueil (efface tout) ;
 - afficher_panneau : panneau à l'écran pour une liste, un résumé, des chiffres ou des étapes ;
+- afficher_schema : schéma construit en animation (processus, organigramme, carte mentale, chronologie, cycle, graphique chiffré) ;
 - meteo, minuteur, infos_systeme : affichés à l'écran ;
 - notifier_telephone, rappel_telephone : notification sur l'iPhone, tout de suite ou plus tard ;
 - ajouter_widget, retirer_widget : widgets permanents sur l'écran d'accueil (météo, état du Mac, note, horloge, compte à rebours) ;
@@ -235,7 +237,7 @@ def run_shell(commande: str) -> str:
     return f"Code de sortie {proc.returncode}.\n{out}"
 
 
-TOOLS += outils.TOOLS + widgets.TOOLS + telephone.TOOLS
+TOOLS += outils.TOOLS + widgets.TOOLS + telephone.TOOLS + schemas.TOOLS
 
 DIRECT_TOOLS = {
     "ouvrir_application": lambda a: tool_ouvrir_application(str(a.get("nom", ""))),
@@ -322,7 +324,7 @@ class Session:
                 result = DIRECT_TOOLS[name](args)
                 actions.append({"type": "tool", "name": name, "args": args, "result": result})
                 self._tool_result(name, result)
-            elif name in outils.HANDLERS or name in widgets.HANDLERS or name in telephone.HANDLERS:
+            elif any(name in m.HANDLERS for m in (outils, widgets, telephone, schemas)):
                 try:
                     result, ui = execute_tool(name, args)
                 except Exception as exc:  # noqa: BLE001 - signalé au modèle
@@ -408,6 +410,8 @@ def execute_tool(name: str, args: dict) -> tuple[str, list[dict]]:
         return widgets.HANDLERS[name](args)
     if name in telephone.HANDLERS:
         return telephone.HANDLERS[name](args)
+    if name in schemas.HANDLERS:
+        return schemas.HANDLERS[name](args)
     return f"Outil inconnu : {name}", []
 
 
@@ -574,7 +578,7 @@ def tts_kokoro(text: str, voice: str, speed: float) -> bytes:
 # --------------------------------------------------------------------------
 
 ALLOWED_HOSTS = {f"localhost:{PORT}", f"127.0.0.1:{PORT}"}
-STATIC = {"/": ("index.html", "text/html; charset=utf-8")}
+STATIC = {"/": ("index.html", "text/html; charset=utf-8"), "/schema.js": ("schema.js", "text/javascript; charset=utf-8")}
 VENDOR_TYPES = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".png": "image/png", ".svg": "image/svg+xml"}
 
 
