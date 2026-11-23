@@ -660,6 +660,29 @@ class Handler(BaseHTTPRequestHandler):
     def _json(self, code: int, data: dict) -> None:
         self._send(code, json.dumps(data, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
 
+    def _flux_evenements(self) -> None:
+        """Server-Sent Events : chaque événement (voix en flux, actions, validations) part immédiatement."""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+        LAST_POLL[0] = time.time()
+        _, last = BUS.after(10**12)
+        try:
+            self.wfile.write(b"retry: 1000\n\n"); self.wfile.flush()
+            while True:
+                events, newest = BUS.attendre(last, 10)
+                LAST_POLL[0] = time.time()
+                if not events:
+                    self.wfile.write(b": ping\n\n")
+                for e in events:
+                    self.wfile.write(("data: " + json.dumps(e, ensure_ascii=False) + "\n\n").encode("utf-8"))
+                self.wfile.flush()
+                last = max(last, newest)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            return
+
     def do_GET(self) -> None:
         if not self._host_ok():
             return self._send(403, b"Forbidden", "text/plain")
@@ -668,6 +691,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"model": MODEL, "ollama": OLLAMA, "mac": IS_MAC, "cerveau": current_brain(),
                                     "autonomie": current_autonomy(), "vitesse": current_speed(), "claude": bool(cerveau_claude.find_claude()),
                                     "reveil": time.time() - WAKE_AT[0] < 15, "version": VERSION_INTERFACE()})
+        if path == "/api/events/stream":
+            return self._flux_evenements()
         if path == "/api/events":
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             try:

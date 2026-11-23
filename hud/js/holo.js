@@ -161,11 +161,24 @@ export function createHolo({ orbElement } = {}) {
 
   // ---------- boucle ----------
   const clock = new THREE.Clock(); let running = true, level = 0, think = 0;
+  // Qualité adaptative : si les images tardent, on baisse la résolution du rendu (et on la remonte quand tout va bien).
+  const RATIOS = [Math.min(window.devicePixelRatio || 1, 1.5), 1, 0.75, 0.6];
+  let niveau = 0, moyenne = 16, compteur = 0;
+  function adapter(dtMs) {
+    moyenne = moyenne * 0.95 + dtMs * 0.05;
+    if (++compteur < 90) return;
+    compteur = 0;
+    const avant = niveau;
+    if (moyenne > 24 && niveau < RATIOS.length - 1) niveau++;
+    else if (moyenne < 14 && niveau > 0) niveau--;
+    if (niveau !== avant) { renderer.setPixelRatio(RATIOS[niveau]); resize(); }
+  }
   function frame() {
     if (!running) return;
     requestAnimationFrame(frame);
     if (document.hidden) return;
-    const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
+    const brut = clock.getDelta(), dt = Math.min(brut, 0.05), t = clock.elapsedTime;
+    adapter(brut * 1000);
     // tête → perspective
     headSmooth.lerp(eyeTarget, 1 - Math.pow(0.001, dt));
     eye.copy(headSmooth); applyProjection();

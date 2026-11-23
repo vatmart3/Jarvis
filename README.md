@@ -98,6 +98,11 @@ directement. Toute commande sur l'ordinateur passe par la fenêtre orange et att
   que si tu regardes l'écran, et se met en veille après 2 minutes sans personne.
 - **Voix en flux** : Jarvis commence à parler dès la première phrase prête, et se tait si tu lui coupes la parole.
 - **Mémoire et notes** : « retiens que j'habite à Sète », « note : rappeler Paul » ; c'est gardé entre les sessions.
+- **Réglages** : « ouvre les réglages » ou bouton Réglages. Gros boutons utilisables en pinçant : cerveau, vitesse,
+  autonomie, voix, écoute, caméra, suivi du visage, affichage, disposition, diagnostic.
+- **Tout se déplace** : panneaux, widgets, minuteurs, horloge. Pince et glisse avec la main, ou glisse le titre à la souris.
+  Les widgets et l'horloge restent là où tu les poses (« Réinitialiser » dans les réglages pour tout remettre).
+- **Suivi du visage affiché** (caméra ouverte) : cadre, contours des yeux, iris, clignements, direction du regard.
 - **Diagnostic** : touche **D** (voyants MICRO, CAMÉRA, VISION, MAINS, IA).
 - Clés optionnelles (ElevenLabs pour la voix, Picovoice pour le mot d'éveil) : fichier `~/.openjarvis/hud-secrets.json`
   avec `elevenlabs_api_key`, `elevenlabs_voice_id`, `picovoice_access_key`.

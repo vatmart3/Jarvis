@@ -88,6 +88,7 @@ class EventBus:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
+        self._cond = threading.Condition(self._lock)
         self._events: list[dict] = []
         self._next = 1
 
@@ -96,9 +97,17 @@ class EventBus:
             self._events.append({"id": self._next, "type": kind, **data})
             self._next += 1
             del self._events[:-200]
+            self._cond.notify_all()
 
     def after(self, last: int) -> tuple[list[dict], int]:
         with self._lock:
+            return [e for e in self._events if e["id"] > last], self._next - 1
+
+    def attendre(self, last: int, timeout: float) -> tuple[list[dict], int]:
+        """Bloque jusqu'à un nouvel événement (flux continu vers l'interface, sans délai)."""
+        with self._cond:
+            if self._next - 1 <= last:
+                self._cond.wait(timeout)
             return [e for e in self._events if e["id"] > last], self._next - 1
 
 

@@ -35,6 +35,10 @@ async function creer(Klass, model, extra) {
 }
 
 const d2 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+// indices FaceMesh : ovale du visage, contours des yeux (iris : 468-472 et 473-477)
+const OVALE = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
+const OEIL_G = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246];
+const OEIL_D = [263, 249, 390, 373, 374, 380, 381, 382, 362, 398, 384, 385, 386, 387, 388, 466];
 // doigt tendu : bout plus loin du poignet que l'articulation intermédiaire
 const tendu = (lm, tip, pip) => d2(lm[tip], lm[0]) > d2(lm[pip], lm[0]) * 1.12;
 
@@ -81,7 +85,7 @@ export function createVision({ onStatus = () => {} } = {}) {
         hands = h.tache;
         onStatus("vision", "ok", `MediaPipe (${h.delegate})`);
       } catch (e) { onStatus("vision", "err", "modèles indisponibles"); onStatus("mains", "err", "—"); throw Object.assign(new Error("vision"), { name: "VisionError", cause: e }); }
-      creer(lib.m.FaceLandmarker, FACE_MODEL, { numFaces: 1, outputFacialTransformationMatrixes: true })
+      creer(lib.m.FaceLandmarker, FACE_MODEL, { numFaces: 1, outputFacialTransformationMatrixes: true, outputFaceBlendshapes: true })
         .then((f) => { face = f.tache; }).catch((e) => console.warn("Visage indisponible", e));
     }
     onStatus("mains", "warn", "aucune main");
@@ -126,7 +130,7 @@ export function createVision({ onStatus = () => {} } = {}) {
     const now = performance.now(), ts = Math.max(lastTs + 1, Math.round(now)); lastTs = ts; n++;
     try {
       mainsFrame(hands.detectForVideo(video, ts), now);
-      if (face && n % 3 === 0) visageFrame(face.detectForVideo(video, ts), now);
+      if (face && n % 2 === 0) visageFrame(face.detectForVideo(video, ts), now);
     } catch (e) { console.warn("vision", e); }
     suite();
   }
@@ -190,6 +194,15 @@ export function createVision({ onStatus = () => {} } = {}) {
     if (m) { yaw = (Math.atan2(m[8], m[10]) * 180) / Math.PI; pitch = (Math.atan2(-m[9], Math.hypot(m[8], m[10])) * 180) / Math.PI; }
     const pire = Math.max(Math.abs(yaw), Math.abs(pitch + 8));
     majRegard(regard ? pire < LOOK_OUT : pire < LOOK_IN, now);
+    // contours du visage et des yeux, iris, clignements : pour l'affichage du suivi à l'écran
+    const bs = Object.fromEntries((res.faceBlendshapes?.[0]?.categories || []).map((c) => [c.categoryName, c.score]));
+    const pt = (i) => versEcran(lm[i].x, lm[i].y);
+    emit("visagePoints", {
+      ovale: OVALE.map(pt), oeilG: OEIL_G.map(pt), oeilD: OEIL_D.map(pt),
+      irisG: lm[468] ? [pt(468), pt(469), pt(471)] : null, irisD: lm[473] ? [pt(473), pt(474), pt(476)] : null,
+      clignG: bs.eyeBlinkLeft || 0, clignD: bs.eyeBlinkRight || 0, sourire: ((bs.mouthSmileLeft || 0) + (bs.mouthSmileRight || 0)) / 2,
+      yaw, pitch, regard,
+    });
     const l = lm[33], r = lm[263];
     emit("tete", { x: tete[0].filter((1 - (l.x + r.x) / 2 - 0.5) * 2, now), y: tete[1].filter(-((l.y + r.y) / 2 - 0.45) * 2, now),
       distance: tete[2].filter(0.11 / Math.max(0.03, d2(l, r)), now), yaw, pitch });

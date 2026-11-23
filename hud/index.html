@@ -282,6 +282,27 @@
   body.holo-on #grid { opacity: .18; }
   body.veille #holo { opacity: .35; transition: opacity 2s; }
   body.veille #clock, body.veille #status, body.veille #leftcol { opacity: .25; transition: opacity 2s; }
+  /* Éléments déplacés librement (widgets, horloge, minuteurs) */
+  #libres { position: fixed; inset: 0; z-index: 456; pointer-events: none; perspective: 1100px; }
+  #libres .libre { position: absolute; pointer-events: auto; margin: 0; --s: 1; --tx: 0px; --ty: 0px; --ry: 0deg;
+    transform: translate3d(var(--tx), var(--ty), 0) rotateY(var(--ry)) scale(var(--s)); transform-origin: top left; will-change: transform; }
+  #libres .libre.drag, #panels .panel.drag { box-shadow: 0 0 40px rgba(73, 198, 255, .35); }
+  #libres .libre.ejecte { transition: transform .55s cubic-bezier(.4, 0, 1, 1), opacity .55s; opacity: 0; }
+  #libres #clock.libre { top: auto; left: auto; }
+  #panels .panel h4, .wcard .wt, #timers .timer, #clock { cursor: grab; touch-action: none; }
+  #panels .panel { will-change: transform; }
+  /* Réglages : gros boutons, faciles à pincer */
+  #panels .panel.reglages { width: min(560px, calc(100vw - 32px)); }
+  .rg-ligne { display: grid; grid-template-columns: 130px 1fr; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid rgba(73, 198, 255, .07); }
+  .rg-titre { font-family: var(--mono); font-size: 11px; letter-spacing: .14em; color: var(--muted); text-transform: uppercase; }
+  .rg-opts { display: flex; flex-wrap: wrap; gap: 8px; }
+  .rg-opt { min-height: 46px; min-width: 96px; padding: 8px 14px; background: rgba(3, 12, 22, .6); border: 1px solid var(--cyan-faint); color: var(--text);
+    font-family: var(--sans); font-size: 16px; cursor: pointer; transition: background .15s, border-color .15s, box-shadow .15s; }
+  .rg-opt:hover, .rg-opt:focus-visible, .rg-opt.vise { border-color: var(--cyan); box-shadow: 0 0 18px rgba(73, 198, 255, .35); outline: none; }
+  .rg-opt.actif { background: rgba(73, 198, 255, .18); border-color: var(--cyan); color: #fff; }
+  [data-act].vise { box-shadow: 0 0 18px rgba(73, 198, 255, .45) !important; border-color: var(--cyan) !important; }
+  /* Suivi du visage */
+  #suivi { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 446; pointer-events: none; }
   /* Vision : vidéo en fond plein écran, miroir + filtre holographique, ligne de scan */
   #visionvideo { position: fixed; inset: 0; width: 100vw; height: 100vh; object-fit: cover; transform: scaleX(-1); z-index: 1;
     filter: grayscale(1) sepia(1) hue-rotate(165deg) saturate(3.2) brightness(.55) contrast(1.35); opacity: 0; transition: opacity 1s; pointer-events: none; }
@@ -296,7 +317,7 @@
   #visionfx .vx-label { position: absolute; top: 112px; left: 50%; transform: translateX(-50%); font-family: var(--mono); font-size: 12px;
     letter-spacing: .4em; color: var(--cyan); text-shadow: 0 0 10px var(--cyan); animation: blink 1.6s steps(2) infinite; }
   body.map-on #visionfx .vx-label, body.stage-on #visionfx .vx-label { top: 132px; left: auto; right: 48px; transform: none; }
-  .hand-cursor { position: fixed; left: -14px; top: -14px; width: 28px; height: 28px; border-radius: 50%; z-index: 700; pointer-events: none;
+  .hand-cursor { will-change: transform; position: fixed; left: -14px; top: -14px; width: 28px; height: 28px; border-radius: 50%; z-index: 700; pointer-events: none;
     border: 2px solid var(--cyan); box-shadow: 0 0 14px var(--cyan), inset 0 0 10px rgba(73, 198, 255, .4); opacity: 0; transition: opacity .2s, width .15s, height .15s, left .15s, top .15s; }
   .hand-cursor::after { content: ""; position: absolute; inset: 9px; border-radius: 50%; background: #fff; box-shadow: 0 0 10px #fff; }
   .hand-cursor.on { opacity: 1; }
@@ -456,6 +477,7 @@
 
 <div id="bar">
   <input id="input" type="text" placeholder="Écris à Jarvis…  (touche /)" autocomplete="off" aria-label="Message pour Jarvis">
+  <button class="btn" id="reglagesbtn" data-act="reglages" title="Réglages (utilisables à la main)">Réglages</button>
   <button class="btn" id="handsfree" data-act="mains-libres" title="Écoute permanente : dis « Jarvis » puis ta demande">Mains libres</button>
   <button class="btn" id="brainbtn" data-act="cerveau" title="Changer de cerveau : Claude (abonnement Claude) ou modèle local">Cerveau</button>
   <button class="btn" id="speedbtn" data-act="vitesse" title="Vitesse de Claude : Rapide (Haiku), Équilibré (Sonnet), Puissant (Opus)">Vitesse</button>
@@ -1244,7 +1266,7 @@
   // ---------- Widgets permanents ----------
   const widgetTimers = [];
   function wcard(w, title) {
-    const el = document.createElement("section"); el.className = "wcard";
+    const el = document.createElement("section"); el.className = "wcard"; el.dataset.cle = "w:" + w.id;
     const t = document.createElement("div"); t.className = "wt"; t.textContent = w.titre || title; el.appendChild(t);
     const x = document.createElement("button"); x.className = "wx"; x.textContent = "✕"; x.setAttribute("aria-label", "Retirer ce widget");
     x.dataset.act = "widget-retirer";
@@ -1311,6 +1333,7 @@
       widgetTimers.splice(0).forEach(clearInterval);
       const box = $("widgets"); box.textContent = "";
       d.widgets.forEach((w) => { try { box.appendChild(renderWidget(w)); } catch (e) { console.warn(e); } });
+      if (ext.apresWidgets) ext.apresWidgets();
     } catch (_) { /* serveur indisponible */ }
   }
   loadWidgets();
@@ -1410,30 +1433,37 @@
   const ACTIVITY = { telephone: "Demande depuis l'iPhone…", executer_commande: "Action en cours…", WebSearch: "Recherche sur le web…", WebFetch: "Lecture d'une page web…", Read: "Lecture d'un fichier…",
     Glob: "Recherche de fichiers…", Grep: "Recherche dans les fichiers…" };
   let lastEvent = null;
-  async function pollEvents() {
-    try {
-      const r = await (await fetch("/api/events?after=" + (lastEvent ?? 0))).json();
-      if (lastEvent === null) { lastEvent = r.last; return; } // ignore l'historique au démarrage
-      for (const e of r.events) {
-        lastEvent = Math.max(lastEvent, e.id);
+  function handleEvent(e) {
         if (e.type === "actions") applyActions(e.actions);
         else if (e.type === "pending") openConfirm(e.pending);
         else if (e.type === "pending_closed" && pending && pending.id === e.id) { pending = null; body.classList.remove("confirm"); }
         else if (e.type === "wake") onWake();
         else if (ext.event && ext.event(e)) { /* géré par les modules */ }
         else if (e.type === "activity" && ACTIVITY[e.outil]) { activity(ACTIVITY[e.outil]); addLine("action", "▸ " + ACTIVITY[e.outil]); }
-      }
+  }
+  async function pollEvents() {
+    try {
+      const r = await (await fetch("/api/events?after=" + (lastEvent ?? 0))).json();
+      if (lastEvent === null) { lastEvent = r.last; return; } // ignore l'historique au démarrage
+      for (const e of r.events) { lastEvent = Math.max(lastEvent, e.id); handleEvent(e); }
     } catch (_) { /* serveur momentanément indisponible */ }
+  }
+  // Flux continu (Server-Sent Events) : aucun délai ; repli sur l'interrogation régulière si indisponible.
+  let flux = null;
+  if (window.EventSource) {
+    flux = new EventSource("/api/events/stream");
+    flux.onmessage = (m) => { try { handleEvent(JSON.parse(m.data)); } catch (_) {} };
+    flux.onerror = () => { if (ext.mode === "cloud" || flux.readyState === 2) { flux.close(); flux = null; } };
   }
   (function loopEvents() {
     const cloud = ext.mode === "cloud";
-    if (!cloud) pollEvents();
-    setTimeout(loopEvents, cloud ? 2000 : busy ? 150 : 600); // plus réactif pendant une réponse (voix en flux)
+    if (!cloud && !flux) pollEvents();
+    setTimeout(loopEvents, cloud ? 2000 : busy ? 150 : 600);
   })();
   if (!SR) $("micmode").textContent = "indisponible (Chrome/Safari)";
   // API du cœur pour les modules
   window.JARVIS = {
-    $, body, store, api, act, layoutPanels, closeCard, applyActions, handleResult, send, speak, stopSpeaking, setState, addLine, toast, activity,
+    $, body, store, api, act, ACTS, card, layoutPanels, closeCard, applyActions, loadWidgets, handleResult, send, speak, stopSpeaking, setState, addLine, toast, activity,
     openConfirm, decide, startRec, toggleListen, currentChoice, showWeatherMap, goHome, zoomMap, setTitle, revealMap,
     get map() { return map; }, get pending() { return pending; }, get busy() { return busy; },
     get recActive() { return recActive; }, get handsFree() { return handsFree; }, get voiceOn() { return voiceOn; },

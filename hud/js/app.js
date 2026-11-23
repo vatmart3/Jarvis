@@ -7,6 +7,9 @@ import { createCloudBrain } from "./llm.js";
 import { OUTILS } from "./outils-web.js";
 import { pont } from "./pont.js";
 import { createDiag } from "./diag.js";
+import { createSuivi } from "./suivi.js";
+import { createDeplacement } from "./deplacer.js";
+import { createReglages } from "./reglages.js";
 
 const J = window.JARVIS, ext = window.JARVIS_EXT;
 if (!J) throw new Error("Cœur Jarvis absent");
@@ -193,91 +196,91 @@ function fermerCamera(parler) {
 }
 diag.onCamera(() => (vision?.ouverte ? fermerCamera(false) : ouvrirCamera(false)));
 
-// ---------- gestes sur MES panneaux (.panel) et boutons [data-act] ----------
-const curseurs = {}, prises = {};
-let vise = null, zoomRef = null, mapDrag = null, zoomAcc = 0, zTop = 10;
+// ---------- suivi du visage, déplacement libre, réglages ----------
+const suivi = createSuivi();
+try { suivi.afficher(localStorage.getItem("jarvis.suivi") !== "off"); } catch (_) {}
+const deplacement = createDeplacement({ J, sfx });
+ext.apresWidgets = () => deplacement.restaurer();
+requestAnimationFrame(() => deplacement.restaurer());
+const reglages = createReglages({ J, voix, sfx, cfg, suivi, deplacement, diag,
+  camera: { ouvrir: () => ouvrirCamera(false), fermer: () => fermerCamera(false), ouverte: () => !!vision?.ouverte } });
+const RX_REGLAGES = /\b(ouvre|ouvrir|affiche|afficher|montre|va dans|aller dans)\b.*\b(reglages?|parametres?|preferences|options)\b|^(reglages?|parametres?)$/;
+const RX_FERMER_REGLAGES = /\b(ferme|fermer|quitte|cache)\b.*\b(reglages?|parametres?|preferences|options)\b/;
+const interceptCamera = ext.intercept;
+ext.intercept = (texte) => {
+  const t = norm(texte);
+  if (RX_FERMER_REGLAGES.test(t)) { reglages.fermer(); return true; }
+  if (RX_REGLAGES.test(t)) { reglages.ouvrir(); voix.say("Voici les réglages, Monsieur."); return true; }
+  return interceptCamera(texte);
+};
+
+// ---------- gestes : pincer = cliquer / saisir, glisser = déplacer, lâcher vite = éjecter ----------
+// Le curseur suit la main avec une interpolation à 60 i/s (la caméra en fournit ~30) : mouvement fluide.
+const curseurs = {}, saisies = {};
+let vise = null, zoomRef = null, zoomAcc = 0;
 function curseur(main) {
-  return (curseurs[main] ||= Object.assign(document.body.appendChild(document.createElement("div")), { className: "hand-cursor" }));
+  return (curseurs[main] ||= { el: Object.assign(document.body.appendChild(document.createElement("div")), { className: "hand-cursor" }), x: 0, y: 0, tx: 0, ty: 0, on: false, init: false });
 }
-function sous(x, y) {
-  for (const el of document.elementsFromPoint(x, y)) {
-    if (el.classList.contains("hand-cursor")) continue;
-    const a = el.closest("[data-act]"), p = el.closest("#panels .panel");
-    if (a || p) return { act: a, panel: p };
+(function animerCurseurs() {
+  requestAnimationFrame(animerCurseurs);
+  for (const [main, c] of Object.entries(curseurs)) {
+    if (!c.on) continue;
+    c.x += (c.tx - c.x) * 0.55; c.y += (c.ty - c.y) * 0.55;
+    c.el.style.transform = `translate3d(${c.x}px, ${c.y}px, 0)`;
+    if (saisies[main] && deplacement.prise) deplacement.bouger(c.x, c.y);
+    else if (saisies[main]?.map && J.map) { J.map.panBy([saisies[main].map.x - c.x, saisies[main].map.y - c.y], { animate: false }); saisies[main].map = { x: c.x, y: c.y }; }
   }
-  return {};
-}
-const echelle = (p) => parseFloat(getComputedStyle(p).getPropertyValue("--s")) || 1;
-function ejecter(p, vx, vy) {
-  const n = Math.hypot(vx, vy) || 1, dist = Math.max(window.innerWidth, window.innerHeight) * 1.2;
-  p.classList.remove("drag"); p.classList.add("ejecte");
-  p.style.setProperty("--tx", `${(vx / n) * dist}px`); p.style.setProperty("--ty", `${(vy / n) * dist}px`);
-  sfx.whoosh(); setTimeout(() => { p.remove(); J.layoutPanels(); }, 560);
-}
+})();
 function brancherVision() {
   vision.on("tete", (t) => {
     holo?.setEye(t.x, t.y, t.distance);
     $("panels").style.perspectiveOrigin = `${50 - t.x * 35}% ${50 + t.y * 35}%`; // parallaxe des panneaux
   });
+  vision.on("visagePoints", (d) => suivi.maj(d));
   vision.on("visage", (v) => { if (!v) { holo?.resetEye(); $("panels").style.perspectiveOrigin = ""; } });
   vision.on("regard", (r) => body.classList.toggle("regard", r));
   vision.on("veille", () => { body.classList.add("veille"); holo?.setDim(1); sfx.veille(); J.setHandsFree(false); });
   vision.on("reveil", () => { body.classList.remove("veille"); holo?.setDim(0); sfx.reveil(); motEveil(); });
   vision.on("assis", () => saluer());
   vision.on("perdue", () => { diag.banner("La caméra s'est déconnectée.", "Caméra perdue."); voix.say("J'ai perdu la caméra, Monsieur."); });
-  vision.on("curseur", (c) => {
-    const el = curseur(c.main);
-    if (c.x === null) { el.classList.remove("on"); return; }
-    el.classList.add("on"); el.classList.toggle("pince", !!c.pince);
-    el.style.transform = `translate(${c.x}px, ${c.y}px)`;
-    const prise = prises[c.main];
-    if (prise?.panel) {
-      prise.panel.style.left = `${c.x - prise.dx}px`; prise.panel.style.top = `${c.y - prise.dy}px`;
-    } else if (prise?.map && J.map) {
-      J.map.panBy([prise.map.x - c.x, prise.map.y - c.y], { animate: false }); prise.map = { x: c.x, y: c.y };
-    } else if (!c.pince) {
-      const { act, panel } = sous(c.x, c.y), cible = act || panel || null;
+  vision.on("curseur", (m) => {
+    const c = curseur(m.main);
+    if (m.x === null) { c.on = false; c.init = false; c.el.classList.remove("on"); return; }
+    if (!c.init) { c.x = m.x; c.y = m.y; c.init = true; }
+    c.tx = m.x; c.ty = m.y; c.on = true;
+    c.el.classList.add("on"); c.el.classList.toggle("pince", !!m.pince);
+    if (!m.pince) {
+      const { act, mobile } = deplacement.sous(m.x, m.y), cible = act || mobile || null;
       if (cible !== vise) { vise?.classList.remove("vise"); vise = cible; vise?.classList.add("vise"); if (act) sfx.tick(); }
     }
   });
-  vision.on("pince", (c) => {
-    const { act, panel } = sous(c.x, c.y);
-    if (act) { sfx.bip(); J.act(act); return; }                     // pincer = clic sur [data-act]
-    if (panel) {                                                     // pincer = saisir le panneau
-      const r = panel.getBoundingClientRect();
-      panel.classList.add("drag", "place"); panel.style.zIndex = ++zTop;
-      prises[c.main] = { panel, dx: c.x - parseFloat(panel.style.left || r.left), dy: c.y - parseFloat(panel.style.top || r.top) };
-      sfx.attrape(); J.layoutPanels(); return;
-    }
-    if (body.classList.contains("map-on")) prises[c.main] = { map: { x: c.x, y: c.y } };
+  vision.on("pince", (m) => {
+    const c = curseur(m.main), x = c.init ? c.x : m.x, y = c.init ? c.y : m.y;
+    const { act, mobile } = deplacement.sous(x, y);
+    if (act) { sfx.bip(); J.act(act); return; }                                     // pincer un bouton = cliquer
+    if (mobile && deplacement.prendre(mobile, x, y)) { saisies[m.main] = { el: mobile }; return; } // saisir
+    if (body.classList.contains("map-on")) saisies[m.main] = { map: { x, y } };
   });
-  vision.on("relache", (c) => {
-    const prise = prises[c.main]; delete prises[c.main];
-    if (!prise?.panel) return;
-    const v = Math.hypot(c.vx, c.vy);
-    if (v > 1400) ejecter(prise.panel, c.vx, c.vy);                // lâcher vite = éjecter
-    else { prise.panel.classList.remove("drag"); sfx.lache(); }      // glisser = déplacer
+  vision.on("relache", (m) => {
+    const s = saisies[m.main]; delete saisies[m.main];
+    if (s?.el) deplacement.lacher(m.vx, m.vy);                                     // lâcher vite = éjecter
   });
-  vision.on("rotation", (r) => {
-    const p = Object.values(prises).find((x) => x.panel)?.panel;
-    if (p) { const ry = parseFloat(p.style.getPropertyValue("--ry")) || -7; p.style.setProperty("--ry", `${Math.max(-55, Math.min(55, ry - r.delta * 60))}deg`); }
-    else holo?.spin(-r.delta);
-  });
-  vision.on("deuxMains", (m) => {                                    // deux mains = zoom (--s entre 0,6 et 1,9)
+  vision.on("rotation", (r) => { const el = deplacement.prise; if (el) deplacement.tourner(el, r.delta); else holo?.spin(-r.delta); });
+  vision.on("deuxMains", (m) => {                                                    // deux mains = zoom (0,6 à 1,9)
     if (!m || !m.pinces) { zoomRef = null; return; }
-    const cible = Object.values(prises).find((x) => x.panel)?.panel || sous(m.cx, m.cy).panel;
+    const cible = deplacement.prise || deplacement.sous(m.cx, m.cy).mobile;
     if (cible) {
-      if (!zoomRef || zoomRef.el !== cible) zoomRef = { el: cible, d: m.d, s: echelle(cible) };
-      cible.style.setProperty("--s", Math.max(0.6, Math.min(1.9, zoomRef.s * (m.d / zoomRef.d))).toFixed(3));
+      if (!zoomRef || zoomRef.el !== cible) zoomRef = { el: cible, d: m.d, s: deplacement.echelle(cible) };
+      deplacement.zoomer(cible, zoomRef.s * (m.d / zoomRef.d));
     } else if (body.classList.contains("map-on") && J.map) {
       if (zoomRef?.d) { zoomAcc += Math.log2(m.d / zoomRef.d) * 1.5; if (Math.abs(zoomAcc) > 0.15) { J.map.setZoom(J.map.getZoom() + zoomAcc, { animate: false }); zoomAcc = 0; } }
       zoomRef = { el: null, d: m.d };
     }
   });
-  vision.on("poing", (c) => {                                        // poing tenu 0,9 s = fermer le panneau
+  vision.on("poing", (m) => {                                                        // poing tenu 0,9 s = fermer
     if (J.pending) { sfx.annulation(); J.decide(false); return; }
-    const p = sous(c.x, c.y).panel || Object.values(prises).find((x) => x.panel)?.panel || document.querySelector("#panels .panel");
-    if (p) { sfx.annulation(); J.closeCard(p); }
+    const p = deplacement.sous(m.x, m.y).mobile || document.querySelector("#panels .panel");
+    if (p?.closest("#panels")) { sfx.annulation(); J.closeCard(p); }
   });
   vision.on("pouce", () => { sfx.confirmation(); if (J.pending) J.decide(true); });
   vision.on("paume", () => { if (voix.speaking) { voix.stop(); sfx.fin_ecoute(); } });
@@ -325,4 +328,4 @@ window.addEventListener("pointerdown", premierGeste); window.addEventListener("k
 // ---------- pont local (ouverture d'apps depuis la version en ligne) ----------
 if (cfg.mode !== "local") pont.demarrer((ok, msg) => { if (ok) J.toast?.("Pont local connecté : Jarvis peut ouvrir vos applications."); else if (msg) console.info("pont local :", msg); });
 
-window.JARVIS_APP = { voix, vision: () => vision, holo: () => holo, diag, cfg, ouvrirCamera, fermerCamera };
+window.JARVIS_APP = { voix, vision: () => vision, holo: () => holo, diag, cfg, ouvrirCamera, fermerCamera, reglages, deplacement, suivi };
