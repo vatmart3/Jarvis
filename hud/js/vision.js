@@ -201,7 +201,7 @@ export function createVision({ onStatus = () => {} } = {}) {
       ovale: OVALE.map(pt), oeilG: OEIL_G.map(pt), oeilD: OEIL_D.map(pt),
       irisG: lm[468] ? [pt(468), pt(469), pt(471)] : null, irisD: lm[473] ? [pt(473), pt(474), pt(476)] : null,
       clignG: bs.eyeBlinkLeft || 0, clignD: bs.eyeBlinkRight || 0, sourire: ((bs.mouthSmileLeft || 0) + (bs.mouthSmileRight || 0)) / 2,
-      yaw, pitch, regard,
+      yaw, pitch, regard, t: now,
     });
     const l = lm[33], r = lm[263];
     emit("tete", { x: tete[0].filter((1 - (l.x + r.x) / 2 - 0.5) * 2, now), y: tete[1].filter(-((l.y + r.y) / 2 - 0.45) * 2, now),

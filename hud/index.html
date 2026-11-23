@@ -62,7 +62,7 @@
 
   /* ---------- Panneaux ---------- */
   /* Calque des panneaux : plein écran ; chaque panneau (.panel) est en position absolue, déplaçable à la main. */
-  #panels { position: fixed; inset: 0; z-index: 455; pointer-events: none; perspective: 1100px; }
+  #panels { position: fixed; inset: 0; z-index: 457; pointer-events: none; perspective: 1100px; }
   #panels .panel { position: absolute; animation-fill-mode: backwards; width: min(380px, calc(100vw - 32px)); pointer-events: auto; --s: 1; --ry: -7deg; --tx: 0px; --ty: 0px;
     transform: translate(var(--tx), var(--ty)) rotateY(var(--ry)) scale(var(--s)); transform-origin: center;
     transition: left .5s cubic-bezier(.2, .9, .3, 1), top .5s cubic-bezier(.2, .9, .3, 1), box-shadow .2s; }
@@ -301,6 +301,55 @@
   .rg-opt:hover, .rg-opt:focus-visible, .rg-opt.vise { border-color: var(--cyan); box-shadow: 0 0 18px rgba(73, 198, 255, .35); outline: none; }
   .rg-opt.actif { background: rgba(73, 198, 255, .18); border-color: var(--cyan); color: #fff; }
   [data-act].vise { box-shadow: 0 0 18px rgba(73, 198, 255, .45) !important; border-color: var(--cyan) !important; }
+  /* Caméra ouverte : Jarvis se range en bas à droite, le menu des données s'ouvre à gauche */
+  body.vision-on #orb { left: calc(100% - 130px); top: calc(100% - 140px); width: 150px; height: 150px; }
+  body.vision-on #hint { opacity: 0; pointer-events: none; }
+  body.vision-on #activity { left: calc(100% - 130px); top: calc(100% - 52px); font-size: 10px; }
+  #clock:not(.libre), #leftcol { transition: left .7s cubic-bezier(.65, 0, .35, 1), opacity 2s; }
+  body.menu-on #clock:not(.libre), body.menu-on #leftcol { left: 262px; }
+  #donnees { position: fixed; z-index: 458; left: 16px; top: 50%; width: 214px; transform: translate(-120%, -50%); opacity: 0; pointer-events: none;
+    padding: 12px 12px 14px; background: linear-gradient(90deg, rgba(2, 10, 18, .82), rgba(2, 10, 18, .55)); border: 1px solid var(--cyan-faint);
+    border-left: 2px solid var(--cyan); backdrop-filter: blur(6px); transition: transform .6s cubic-bezier(.2, .9, .3, 1), opacity .4s; }
+  body.menu-on #donnees { transform: translate(0, -50%); opacity: 1; pointer-events: auto; }
+  .dn-titre { font-family: var(--mono); font-size: 12px; letter-spacing: .32em; color: var(--cyan); text-shadow: 0 0 8px var(--cyan); margin-bottom: 10px; }
+  .dn-titre small { display: block; font-size: 9px; letter-spacing: .18em; color: var(--muted); text-shadow: none; margin-top: 3px; }
+  .dn-grille { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .tuile { height: 78px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; cursor: grab; touch-action: none; user-select: none;
+    background: rgba(3, 14, 26, .7); border: 1px solid var(--cyan-faint); color: var(--text); font-family: var(--sans); font-size: 12.5px; text-align: center;
+    transition: border-color .15s, box-shadow .15s, background .15s, transform .15s; opacity: 0; transform: translateX(-16px); }
+  body.menu-on .tuile { opacity: 1; transform: none; transition-delay: calc(var(--i) * 45ms + .15s), calc(var(--i) * 45ms + .15s), 0s, 0s, 0s; }
+  .tuile svg { width: 26px; height: 26px; fill: none; stroke: var(--cyan); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 4px var(--cyan)); }
+  .tuile:hover, .tuile:focus-visible, .tuile.vise { border-color: var(--cyan); background: rgba(73, 198, 255, .14); box-shadow: 0 0 18px rgba(73, 198, 255, .4); outline: none; transform: scale(1.04); }
+  .tuile.pris { background: rgba(255, 181, 71, .18); border-color: var(--warn); }
+  /* Modules posés */
+  #libres .module { background: rgba(2, 10, 18, .72); border: 1px solid var(--cyan-faint); border-left: 2px solid var(--cyan); backdrop-filter: blur(5px); padding: 10px 14px 12px; }
+  #libres .module:not(.arrive) { opacity: 0; }
+  #libres .module.arrive { animation: mod-arrive .45s cubic-bezier(.2, .9, .3, 1); }
+  @keyframes mod-arrive { from { opacity: 0; filter: brightness(2.2) blur(2px); } to { opacity: 1; filter: none; } }
+  .module.vise .wx, .module:hover .wx { opacity: 1; }
+  .module .wx { font-size: 15px; padding: 4px 6px; }
+  .module .big { font-size: 40px; }
+  .mc-carte { height: 170px; margin: 2px 0 8px; border: 1px solid var(--cyan-faint); background: #05080c; pointer-events: none; }
+  .mc-carte.haute { height: 210px; }
+  .mj-coord, .mj-det { font-family: var(--mono); font-size: 11px; color: var(--muted); line-height: 1.5; }
+  .mj-coord b { color: var(--cyan); font-weight: normal; }
+  .mj-jours { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px; text-align: center; font-size: 12px; }
+  .mj-jours b { display: block; font-family: var(--mono); font-weight: normal; color: var(--muted); text-transform: uppercase; font-size: 10px; }
+  .mj-jours small { display: block; color: var(--cyan); font-size: 10px; }
+  .mj-villes { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px; margin-top: 8px; font-size: 13px; }
+  .mj-villes div { display: flex; justify-content: space-between; } .mj-villes b { font-family: var(--mono); font-weight: normal; color: var(--cyan); }
+  .mj-notes { margin: 0; padding-left: 16px; font-size: 14px; line-height: 1.45; }
+  .mj-boutons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } .mj-boutons .rg-opt { min-width: 0; }
+  .mj-cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; margin-top: 6px; text-align: center; font-family: var(--mono); font-size: 12px; }
+  .mj-cal i { font-style: normal; color: var(--muted); font-size: 10px; }
+  .mj-cal span.auj { background: var(--cyan); color: #001018; box-shadow: 0 0 10px var(--cyan); }
+  #panels .panel.reglages { max-height: calc(100vh - 150px); overflow-y: auto; }
+  @media (min-width: 1150px) {
+    #panels .panel.reglages { width: min(1040px, calc(100vw - 300px)); }
+    .reglages .rg-corps { display: grid; grid-template-columns: 1fr 1fr; column-gap: 26px; }
+    .reglages .rg-opt { min-width: 80px; font-size: 15px; }
+  }
+  @media (max-width: 760px) { #donnees { width: 176px; } .tuile { height: 64px; font-size: 11px; } body.menu-on #leftcol, body.menu-on #clock:not(.libre) { left: 206px; } }
   /* Suivi du visage */
   #suivi { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 446; pointer-events: none; }
   /* Vision : vidéo en fond plein écran, miroir + filtre holographique, ligne de scan */

@@ -4,7 +4,7 @@ export function createSuivi() {
   const cv = Object.assign(document.createElement("canvas"), { id: "suivi" });
   document.body.appendChild(cv);
   const ctx = cv.getContext("2d");
-  let cible = null, aff = null, visible = true, derniere = 0, dpr = 1;
+  let cible = null, aff = null, visible = true, derniere = 0, dpr = 1, flash = null, aide = "";
   const resize = () => { dpr = Math.min(window.devicePixelRatio || 1, 2); cv.width = innerWidth * dpr; cv.height = innerHeight * dpr; };
   addEventListener("resize", resize); resize();
 
@@ -37,6 +37,14 @@ export function createSuivi() {
     ctx.fillText(f.regard ? "REGARD : ÉCRAN ✓" : "REGARD : AILLEURS", x0, y1 + 18);
     ctx.fillStyle = CY + ".7)";
     ctx.fillText(`LACET ${f.yaw.toFixed(0)}°  TANGAGE ${f.pitch.toFixed(0)}°`, x0, y1 + 34);
+    if (aide) { ctx.fillStyle = CY + ".45)"; ctx.fillText(aide, x0, y1 + 50); }
+    // retour visuel d'une commande des yeux
+    if (flash && performance.now() - flash.t < 1300) {
+      const a = 1 - (performance.now() - flash.t) / 1300;
+      ctx.font = "bold 15px 'Share Tech Mono', monospace"; ctx.fillStyle = `rgba(255,181,71,${a})`; ctx.shadowColor = "#ffb547"; ctx.shadowBlur = 12;
+      ctx.fillText("◉ " + flash.texte, x0, y0 - 30); ctx.shadowBlur = 0; ctx.font = "11px 'Share Tech Mono', monospace";
+      ctx.strokeStyle = `rgba(255,181,71,${a * 0.8})`; ctx.lineWidth = 2; ctx.strokeRect(x0 - 4, y0 - 4, x1 - x0 + 8, y1 - y0 + 8);
+    }
     // ovale (pointillé discret) avec balayage
     ctx.setLineDash([2, 6]); ctx.lineWidth = 1; ctx.strokeStyle = CY + ".35)"; poly(f.ovale); ctx.stroke(); ctx.setLineDash([]);
     const scan = y0 + ((t / 12) % (y1 - y0));
@@ -66,6 +74,8 @@ export function createSuivi() {
   return {
     maj(data) { cible = data; derniere = performance.now(); },
     afficher(v) { visible = v; },
+    flash(texte) { flash = { texte, t: performance.now() }; },
+    aide(t) { aide = t || ""; },
     get visible() { return visible; },
   };
 }

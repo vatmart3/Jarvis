@@ -99,10 +99,21 @@ directement. Toute commande sur l'ordinateur passe par la fenêtre orange et att
 - **Voix en flux** : Jarvis commence à parler dès la première phrase prête, et se tait si tu lui coupes la parole.
 - **Mémoire et notes** : « retiens que j'habite à Sète », « note : rappeler Paul » ; c'est gardé entre les sessions.
 - **Réglages** : « ouvre les réglages » ou bouton Réglages. Gros boutons utilisables en pinçant : cerveau, vitesse,
-  autonomie, voix, écoute, caméra, suivi du visage, affichage, disposition, diagnostic.
+  autonomie, voix, écoute, caméra, suivi du visage, menu des données, commandes des yeux, affichage, disposition, diagnostic.
 - **Tout se déplace** : panneaux, widgets, minuteurs, horloge. Pince et glisse avec la main, ou glisse le titre à la souris.
   Les widgets et l'horloge restent là où tu les poses (« Réinitialiser » dans les réglages pour tout remettre).
 - **Suivi du visage affiché** (caméra ouverte) : cadre, contours des yeux, iris, clignements, direction du regard.
+- **Caméra ouverte** : Jarvis se range en bas à droite et le **menu des données** s'ouvre à gauche
+  (météo, position GPS, radar pluie, heures du monde, système, notes, minuteur, calendrier).
+  Pince une tuile, glisse-la, lâche : le module est posé là, et il y reste après redémarrage.
+  Pour le retirer : le reposer sur le menu, poing tenu dessus, lancer vite, ou ✕.
+  À la voix : « ouvre le menu », « ferme le menu », « place le module radar ».
+- **Commandes des yeux** (réglables dans Réglages) :
+  - **clin d'œil** = cliquer ce que vise ta main (sans main : ouvrir ou fermer le menu) ;
+  - **deux clignements rapides** = Jarvis t'écoute ;
+  - **yeux fermés 1 s** = Jarvis se tait.
+
+  Un clignement naturel ne déclenche rien.
 - **Diagnostic** : touche **D** (voyants MICRO, CAMÉRA, VISION, MAINS, IA).
 - Clés optionnelles (ElevenLabs pour la voix, Picovoice pour le mot d'éveil) : fichier `~/.openjarvis/hud-secrets.json`
   avec `elevenlabs_api_key`, `elevenlabs_voice_id`, `picovoice_access_key`.

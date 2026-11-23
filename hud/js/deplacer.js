@@ -1,7 +1,8 @@
 // Tout est déplaçable : panneaux, widgets, minuteurs, horloge — à la main (pincer) ou à la souris (glisser le titre).
 // Le mouvement passe par transform (accéléré par la carte graphique) ; les positions des widgets et de l'horloge sont gardées.
 const MOBILES = "#panels .panel, .wcard, #timers .timer, #clock";
-const POIGNEES = "#panels .panel h4, .wcard .wt, #timers .timer, #clock";
+const POIGNEES = "#panels .panel h4, .wcard .wt, #timers .timer, #clock, .tuile[data-source]";
+const SOURCES = ".tuile[data-source]"; // tuiles du menu des données : attraper = créer un module
 const CLE_POS = "jarvis.positions";
 const lire = () => { try { return JSON.parse(localStorage.getItem(CLE_POS)) || {}; } catch (_) { return {}; } };
 const ecrire = (v) => { try { localStorage.setItem(CLE_POS, JSON.stringify(v)); } catch (_) {} };
@@ -9,7 +10,7 @@ const ecrire = (v) => { try { localStorage.setItem(CLE_POS, JSON.stringify(v)); 
 export function createDeplacement({ J, sfx }) {
   const libres = Object.assign(document.createElement("div"), { id: "libres" });
   document.body.appendChild(libres);
-  let prise = null, zTop = 20;
+  let prise = null, zTop = 20, fabrique = null;
 
   const cle = (el) => el.dataset.cle || (el.id === "clock" ? "horloge" : null);
   const echelle = (el) => parseFloat(el.style.getPropertyValue("--s")) || 1;
@@ -27,6 +28,7 @@ export function createDeplacement({ J, sfx }) {
 
   function prendre(el, x, y) {
     if (!el) return false;
+    if (el.matches?.(SOURCES)) { el = fabrique?.(el, x, y); if (!el) return false; }
     liberer(el);
     const r = el.getBoundingClientRect();
     el.classList.add("drag", "place"); el.style.zIndex = ++zTop;
@@ -44,7 +46,7 @@ export function createDeplacement({ J, sfx }) {
   }
   function lacher(vx = prise?.vx || 0, vy = prise?.vy || 0) {
     if (!prise) return null;
-    const { el } = prise, dx = prise.x - prise.x0, dy = prise.y - prise.y0;
+    const { el } = prise, dx = prise.x - prise.x0, dy = prise.y - prise.y0, prise_x = prise.x, prise_y = prise.y;
     prise = null;
     el.classList.remove("drag");
     if (Math.hypot(vx, vy) > 1400 && el.id !== "clock") { ejecter(el, vx, vy); return "ejecte"; }
@@ -52,6 +54,7 @@ export function createDeplacement({ J, sfx }) {
     el.style.left = `${(parseFloat(el.style.left) || 0) + dx}px`; el.style.top = `${(parseFloat(el.style.top) || 0) + dy}px`;
     el.style.setProperty("--tx", "0px"); el.style.setProperty("--ty", "0px");
     memoriser(el); sfx.lache();
+    el._apresPose?.(dx, dy, prise_x, prise_y);
     return "pose";
   }
   function ejecter(el, vx, vy) {
@@ -62,6 +65,7 @@ export function createDeplacement({ J, sfx }) {
     setTimeout(() => {
       const x = el.querySelector("[data-act='fermer'], [data-act='widget-retirer']");
       const k = cle(el); if (k) { const p = lire(); delete p[k]; ecrire(p); }
+      el._retirer?.();
       if (x && el.classList.contains("wcard")) x.click(); // retirer le widget pour de bon
       el.remove(); J.layoutPanels();
     }, 560);
@@ -94,7 +98,7 @@ export function createDeplacement({ J, sfx }) {
   }
   function reinitialiser() {
     ecrire({});
-    libres.querySelectorAll(".libre").forEach((el) => { if (el.id === "clock") { el.classList.remove("libre"); el.removeAttribute("style"); document.body.appendChild(el); } else el.remove(); });
+    libres.querySelectorAll(".libre").forEach((el) => { if (el.id === "clock") { el.classList.remove("libre"); el.removeAttribute("style"); document.body.appendChild(el); } else if (el._reinit) el._reinit(); else el.remove(); });
     document.querySelectorAll("#panels .panel").forEach((el) => { el.classList.remove("place"); el.style.removeProperty("--s"); el.style.removeProperty("--ry"); });
     J.loadWidgets(); J.layoutPanels();
   }
@@ -116,12 +120,13 @@ export function createDeplacement({ J, sfx }) {
     sous(x, y) {
       for (const el of document.elementsFromPoint(x, y)) {
         if (el.classList.contains("hand-cursor") || el.id === "suivi") continue;
-        const act = el.closest("[data-act]"), mobile = el.closest(MOBILES);
+        const act = el.closest("[data-act]"), mobile = el.closest(MOBILES) || el.closest(SOURCES);
         if (act || mobile) return { act, mobile };
       }
       return {};
     },
-    prendre, bouger, lacher, zoomer, tourner, restaurer, reinitialiser, echelle,
+    prendre, bouger, lacher, zoomer, tourner, restaurer, reinitialiser, echelle, memoriser,
+    source(fn) { fabrique = fn; },
     get prise() { return prise?.el || null; },
   };
 }
