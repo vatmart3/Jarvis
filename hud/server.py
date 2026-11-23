@@ -6,7 +6,7 @@ avec le modèle local d'Ollama (le même que celui d'OpenJarvis). Le modèle peu
 demander des actions sur l'ordinateur :
 
   - ouvrir une application, une page web ou une recherche ;
-  - afficher un lieu sur la carte ;
+  - piloter l'écran : carte animée, itinéraires, météo, panneaux, minuteurs (voir outils.py) ;
   - régler le volume ;
   - exécuter une commande shell, UNIQUEMENT après ta validation dans l'interface.
 
@@ -31,13 +31,16 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import outils  # noqa: E402
+
 HUD_DIR = Path(__file__).resolve().parent
 PORT = int(os.environ.get("JARVIS_HUD_PORT", "3000"))
 OLLAMA = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
 if not OLLAMA.startswith("http"):
     OLLAMA = "http://" + OLLAMA
 IS_MAC = platform.system() == "Darwin"
-MAX_TOOL_ROUNDS = 6
+MAX_TOOL_ROUNDS = 8
 MAX_HISTORY = 30
 SHELL_TIMEOUT = 60
 OUTPUT_LIMIT = 4000
@@ -67,11 +70,16 @@ Tu parles toujours en français, avec un ton calme, élégant et une pointe d'hu
 Tes réponses sont lues à voix haute : 1 à 3 phrases courtes, sans markdown, sans listes, sans émojis.
 Date et heure actuelles : {now}.
 
-Tu peux agir réellement sur l'ordinateur grâce à tes outils :
+Tu contrôles un écran holographique plein écran et l'ordinateur grâce à tes outils :
+- afficher_carte : carte animée, zone surlignée, plusieurs lieux nommés, lieux reliés ;
+- itineraire, style_carte (sombre, satellite, plan), zoom_carte, accueil (efface tout) ;
+- afficher_panneau : panneau à l'écran pour une liste, un résumé, des chiffres ou des étapes ;
+- meteo, minuteur, infos_systeme : affichés à l'écran ;
 - ouvrir_application, ouvrir_url, rechercher_web, regler_volume : exécutés directement ;
-- afficher_lieu : affiche un lieu sur la carte de l'interface ;
 - executer_commande : commande shell ; l'utilisateur doit la valider avant exécution.
-Utilise un outil dès qu'une demande implique une action, puis confirme brièvement ce que tu as fait.
+Sois visuel : dès qu'une réponse peut se montrer (lieux, listes, chiffres, comparaisons), utilise l'outil d'affichage adapté,
+et enchaîne plusieurs outils si la demande le demande. Si l'utilisateur dit « tu veux » ou « ce que tu veux », choisis toi-même
+des exemples pertinents. Après les actions, confirme brièvement à l'oral sans relire tout le contenu affiché.
 Pour executer_commande, choisis des commandes sûres et explique en une phrase ce qu'elles font.
 N'invente jamais le résultat d'une action."""
 
@@ -109,18 +117,6 @@ TOOLS = [
                 "type": "object",
                 "properties": {"requete": {"type": "string"}},
                 "required": ["requete"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "afficher_lieu",
-            "description": "Affiche une ville, une adresse ou un pays sur la carte de l'interface.",
-            "parameters": {
-                "type": "object",
-                "properties": {"lieu": {"type": "string", "description": "Ex. « Sète », « Tokyo », « Tour Eiffel »"}},
-                "required": ["lieu"],
             },
         },
     },
@@ -231,6 +227,8 @@ def run_shell(commande: str) -> str:
     return f"Code de sortie {proc.returncode}.\n{out}"
 
 
+TOOLS += outils.TOOLS
+
 DIRECT_TOOLS = {
     "ouvrir_application": lambda a: tool_ouvrir_application(str(a.get("nom", ""))),
     "ouvrir_url": lambda a: tool_ouvrir_url(str(a.get("url", ""))),
@@ -316,10 +314,13 @@ class Session:
                 result = DIRECT_TOOLS[name](args)
                 actions.append({"type": "tool", "name": name, "args": args, "result": result})
                 self._tool_result(name, result)
-            elif name == "afficher_lieu":
-                lieu = str(args.get("lieu", "")).strip()
-                actions.append({"type": "map", "lieu": lieu})
-                self._tool_result(name, f"« {lieu} » est affiché sur la carte.")
+            elif name in outils.HANDLERS:
+                try:
+                    result, ui = outils.HANDLERS[name](args)
+                except Exception as exc:  # noqa: BLE001 - signalé au modèle
+                    result, ui = f"Échec de l'outil {name} : {exc}", []
+                actions.extend(ui)
+                self._tool_result(name, result)
             elif name == "executer_commande":
                 self.pending = {
                     "id": uuid.uuid4().hex,
@@ -450,6 +451,7 @@ def tts_kokoro(text: str, voice: str, speed: float) -> bytes:
 
 ALLOWED_HOSTS = {f"localhost:{PORT}", f"127.0.0.1:{PORT}"}
 STATIC = {"/": ("index.html", "text/html; charset=utf-8")}
+VENDOR_TYPES = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".png": "image/png", ".svg": "image/svg+xml"}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -485,6 +487,12 @@ class Handler(BaseHTTPRequestHandler):
         if path in STATIC:
             name, ctype = STATIC[path]
             return self._send(200, (HUD_DIR / name).read_bytes(), ctype)
+        if path.startswith("/vendor/"):
+            target = (HUD_DIR / urllib.parse.unquote(path.lstrip("/"))).resolve()
+            vendor = (HUD_DIR / "vendor").resolve()
+            if vendor in target.parents and target.is_file():
+                ctype = VENDOR_TYPES.get(target.suffix, "application/octet-stream")
+                return self._send(200, target.read_bytes(), ctype)
         self._send(404, b"Not found", "text/plain")
 
     def do_POST(self) -> None:

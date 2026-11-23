@@ -47,32 +47,46 @@ Ouvre un **nouveau terminal** après l'installation, puis :
 
 ## Jarvis HUD : interface vocale plein écran
 
-Interface façon film : orbe lumineux, carte sombre, horloge. Tu parles à Jarvis et il agit sur ton Mac.
-Elle utilise le même modèle local qu'OpenJarvis (lu dans `~/.openjarvis/config.toml`).
+Interface façon film : orbe lumineux, carte animée, panneaux holographiques. Tu parles à Jarvis, il te répond
+à voix haute, pilote l'écran et agit sur ton Mac. Il utilise le même modèle local qu'OpenJarvis.
 
-**Lancer :** double-clique sur `hud/lancer-jarvis.command` dans le Finder, ou :
+### Installer l'application (une seule fois)
 
 ```bash
-~/jarvis-kit/hud/lancer-jarvis.command
+cd ~/jarvis-kit && git pull && ./hud/installer-app.sh
 ```
+
+Ensuite, plus besoin du Terminal : ouvre **Jarvis** depuis le Launchpad, le Dock ou Spotlight (Cmd+Espace, « Jarvis »).
+L'installeur propose aussi de l'ajouter au Dock et de l'ouvrir au démarrage du Mac.
+Pour tout retirer : `./hud/installer-app.sh --desinstaller`.
+
+### Utiliser
 
 | Action | Comment |
 |---|---|
 | Parler | Clique sur l'orbe ou appuie sur **Espace**, puis parle |
 | Mains libres | Bouton « Mains libres », puis dis « **Jarvis**, … » quand tu veux |
 | Écrire | Touche **/** puis Entrée |
-| Couper sa voix | Bouton « Voix on/off », ou Échap pendant qu'il parle |
-| Arrêter | `pkill -f hud/server.py` |
+| Voix | Bouton « Voix » pour choisir, « Son on/off » pour couper |
 
-**Ce que Jarvis peut faire sur ton ordinateur :**
+### Exemples de demandes
 
-- sans demander : ouvrir une application, une page web ou une recherche, régler le volume, afficher un lieu sur la carte ;
-- **avec ta validation** (fenêtre orange, réponds « oui » ou « non ») : exécuter une commande dans le Terminal
-  (trouver un fichier, ranger un dossier, connaître l'espace disque…).
+- « Affiche une carte de la France avec les grandes villes » → la France s'illumine, les villes apparaissent une à une
+- « Montre-moi un tour de l'Italie : Rome, Florence, Venise, Milan » → villes numérotées et reliées
+- « Trajet de Sète à Paris » → itinéraire réel tracé, distance et durée
+- « Passe en vue satellite », « zoome », « montre le monde », « reviens à l'accueil »
+- « Quel temps fait-il à Montpellier ? » → panneau météo et prévisions sur 3 jours
+- « Mets un minuteur de 10 minutes pour les pâtes » → compte à rebours à l'écran, annonce à la fin
+- « Comment va mon Mac ? » → jauges batterie, disque, mémoire, processeur
+- « Donne-moi 5 idées de sorties ce week-end » → panneau avec la liste
+- « Ouvre Spotify », « mets le volume à 30 », « cherche des recettes de risotto »
+- « Combien de place prend mon dossier Téléchargements ? » → commande Terminal, **exécutée seulement après ton « oui »**
 
 **Bon à savoir :**
 
 - Le modèle `qwen3.5:9b` comprend bien mieux les demandes d'action que `qwen3.5:4b`.
+- Cartes, lieux, météo et itinéraires utilisent des services gratuits sans clé (OpenStreetMap, CARTO, Esri, Open-Meteo, OSRM) :
+  il faut internet pour eux, mais le modèle reste local.
 - Chrome demandera l'accès au micro la première fois : accepte.
 - La reconnaissance vocale de Chrome envoie l'audio aux serveurs de Google. Le modèle, lui, reste local.
 - **Changer de voix** : bouton « Voix » en bas de l'écran → clique sur une voix pour l'écouter et la garder.
@@ -81,7 +95,6 @@ Elle utilise le même modèle local qu'OpenJarvis (lu dans `~/.openjarvis/config
   - Voix neuronale locale **Siwis** (optionnelle, ~2 Go à télécharger) :
     `cd ~/.openjarvis/src && uv pip install --python ~/.openjarvis/.venv/bin/python -e '.[voice]'`
     puis relance le HUD (`pkill -f hud/server.py` puis le lanceur).
-- La carte et la recherche de lieux utilisent internet (OpenStreetMap / CARTO).
 
 ## Personnaliser
 
