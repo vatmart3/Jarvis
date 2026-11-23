@@ -82,6 +82,27 @@ Avec Claude, les requêtes comptent dans les limites de ton abonnement.
 **Sécurité :** Claude peut lire tes fichiers et chercher sur le web, mais ne peut **ni modifier ni supprimer** quoi que ce soit
 directement. Toute commande sur l'ordinateur passe par la fenêtre orange et attend ton « oui ».
 
+### Vision, gestes et interface 3D
+
+- **Scène 3D** : orbe holographique animé par la voix de Jarvis, particules, halo lumineux, perspective qui suit ta tête.
+- **Caméra** : dis « **ouvre la caméra** » ou « active la vision », et « **ferme la caméra** » pour l'arrêter.
+  La vidéo passe en fond (miroir, filtre holographique) et Jarvis suit tes deux mains (MediaPipe, tout reste sur le Mac).
+- **Gestes sur les panneaux** :
+  - **pincer** un bouton pour cliquer, ou un panneau pour le saisir ;
+  - **glisser** pour déplacer, **lâcher vite** pour éjecter ;
+  - **deux mains** pour zoomer ;
+  - **poing** tenu 0,9 s pour fermer ;
+  - **pouce levé** pour valider ;
+  - **main ouverte** pour couper la parole.
+- **Visage** (caméra ouverte) : Jarvis te salue quand tu t'assois (briefing météo et notes le matin), n'écoute « Jarvis »
+  que si tu regardes l'écran, et se met en veille après 2 minutes sans personne.
+- **Voix en flux** : Jarvis commence à parler dès la première phrase prête, et se tait si tu lui coupes la parole.
+- **Mémoire et notes** : « retiens que j'habite à Sète », « note : rappeler Paul » ; c'est gardé entre les sessions.
+- **Diagnostic** : touche **D** (voyants MICRO, CAMÉRA, VISION, MAINS, IA).
+- Clés optionnelles (ElevenLabs pour la voix, Picovoice pour le mot d'éveil) : fichier `~/.openjarvis/hud-secrets.json`
+  avec `elevenlabs_api_key`, `elevenlabs_voice_id`, `picovoice_access_key`.
+- **Version en ligne** (Vercel, API Anthropic) : voir [`hud/README-DEPLOIEMENT.md`](hud/README-DEPLOIEMENT.md).
+
 ### « Hey Jarvis »
 
 L'installeur propose d'activer le réveil vocal : dis **« Hey Jarvis »** à tout moment, même Jarvis fermé.

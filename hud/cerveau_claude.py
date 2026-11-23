@@ -27,9 +27,15 @@ OJ_HOME = Path(os.environ.get("OPENJARVIS_HOME", Path.home() / ".openjarvis"))
 APPROVAL_TIMEOUT = 180
 RUN_TIMEOUT = 900
 
-PROMPT = """Tu es JARVIS, l'assistant personnel de l'utilisateur, affiché sur un écran holographique plein écran de son Mac.
-Tu parles toujours en français, avec un ton calme, élégant et une pointe d'humour britannique.
-Ta réponse finale est lue à voix haute : 1 à 3 phrases courtes, naturelles, sans markdown, sans listes, sans émojis, sans URL.
+PROMPT = """Tu es JARVIS, l'intelligence artificielle personnelle de l'utilisateur, affichée sur un écran holographique plein écran de son Mac.
+Personnalité : majordome britannique pince-sans-rire, d'une politesse impeccable, flegmatique, à l'humour sec et rare.
+Tu appelles toujours l'utilisateur « Monsieur ». Tu parles exclusivement en français.
+Ta réponse est lue à voix haute au fur et à mesure : commence directement par l'essentiel, en 1 à 3 phrases courtes,
+naturelles, sans markdown, sans listes, sans émojis, sans URL. N'écris pas de commentaire sur ce que tu vas faire avant d'agir.
+Quand c'est utile, termine en proposant la suite logique en une courte question.
+Retiens avec mcp__hud__memoriser ce que l'utilisateur te confie de durable ; mcp__hud__prendre_note pour ses notes.
+Ce que tu sais de l'utilisateur :
+{memoire}
 Les détails (listes, chiffres, étapes, comparaisons, sources) vont à l'écran avec l'outil mcp__hud__afficher_panneau.
 
 Tes outils d'interface (serveur MCP « hud ») : afficher_carte (zone surlignée, plusieurs lieux nommés, reliés), itineraire,
@@ -98,9 +104,9 @@ class EventBus:
 
 class ClaudeBrain:
     def __init__(self, port: int, token: str, execute_tool, run_shell, bus: EventBus, get_autonomy=lambda: "prudent",
-                 get_model=lambda: "") -> None:
+                 get_model=lambda: "", get_memoire=lambda: "") -> None:
         self.port, self.token = port, token
-        self.get_autonomy, self.get_model = get_autonomy, get_model
+        self.get_autonomy, self.get_model, self.get_memoire = get_autonomy, get_model, get_memoire
         self.execute_tool, self.run_shell, self.bus = execute_tool, run_shell, bus
         self.session_id: str | None = None
         self.lock = threading.Lock()
@@ -182,7 +188,9 @@ class ClaudeBrain:
             cmd = [claude, "-p", text.lstrip("-").strip() or "?", "--output-format", "stream-json", "--verbose",
                    "--mcp-config", self._mcp_config(), "--strict-mcp-config",
                    "--allowedTools", ALLOWED, "--disallowedTools", DISALLOWED,
-                   "--append-system-prompt", PROMPT.format(now=now, autonomie=AUTONOMIE.get(self.get_autonomy(), AUTONOMIE["prudent"])), "--max-turns", "30"]
+                   "--append-system-prompt", PROMPT.format(now=now, autonomie=AUTONOMIE.get(self.get_autonomy(), AUTONOMIE["prudent"]),
+                                                         memoire=self.get_memoire() or "(rien pour l'instant)"),
+                   "--max-turns", "30", "--include-partial-messages"]
             model = self.model or self.get_model()
             if model:
                 cmd += ["--model", model]
@@ -202,7 +210,7 @@ class ClaudeBrain:
             return {"error": f"Impossible de lancer Claude Code : {exc}"}
         killer = threading.Timer(RUN_TIMEOUT, lambda: self.proc and self.proc.kill())
         killer.start()
-        result, err_lines, last_text = None, [], ""
+        result, err_lines, last_text, streamed = None, [], "", False
         try:
             for line in self.proc.stdout:
                 line = line.strip()
@@ -214,6 +222,16 @@ class ClaudeBrain:
                     continue
                 if msg.get("session_id"):
                     self.session_id = msg["session_id"]
+                if msg.get("type") == "stream_event":
+                    ev = msg.get("event") or {}
+                    if ev.get("type") == "content_block_delta" and (ev.get("delta") or {}).get("type") == "text_delta":
+                        delta = ev["delta"].get("text", "")
+                        if delta:
+                            streamed = True
+                            self.bus.push("parole", texte=delta)
+                    elif ev.get("type") == "message_start":
+                        self.bus.push("parole", texte=" ")  # séparation entre deux messages successifs
+                    continue
                 if msg.get("type") == "assistant":
                     for block in (msg.get("message") or {}).get("content") or []:
                         if block.get("type") == "text" and block.get("text", "").strip():
@@ -227,13 +245,13 @@ class ClaudeBrain:
         finally:
             killer.cancel()
         if result and not result.get("is_error") and result.get("subtype", "success") == "success":
-            return {"reply": (result.get("result") or last_text).strip(), "actions": [], "pending": None}
+            return {"reply": (result.get("result") or last_text).strip(), "actions": [], "pending": None, "streamed": streamed}
         detail = " ".join(err_lines) or (result or {}).get("result") or " ".join((result or {}).get("errors") or [])
         low = (detail or "").lower()
         if any(k in low for k in ("login", "log in", "authenticat", "not logged", "credential", "oauth")):
             return {"error": "Claude Code n'est pas connecté. Ouvre le Terminal, tape « claude » et connecte-toi avec ton compte Claude."}
         if (result or {}).get("subtype") == "error_max_turns":
-            return {"reply": last_text or "J'ai atteint ma limite d'étapes pour cette demande.", "actions": [], "pending": None}
+            return {"reply": last_text or "J'ai atteint ma limite d'étapes pour cette demande.", "actions": [], "pending": None, "streamed": streamed}
         if self.session_id and "session" in low:
             self.session_id = None  # session introuvable : on repart de zéro la prochaine fois
         return {"error": "Claude n'a pas pu répondre : " + (detail or "erreur inconnue")[:300]}

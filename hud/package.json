@@ -1,0 +1,10 @@
+{
+  "name": "jarvis-hud",
+  "private": true,
+  "type": "module",
+  "description": "Jarvis : assistant vocal holographique (déploiement Vercel)",
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@anthropic-ai/sdk": "1.6.0"
+  }
+}

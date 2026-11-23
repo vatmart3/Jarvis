@@ -40,6 +40,7 @@ import widgets  # noqa: E402
 import telephone  # noqa: E402
 import schemas  # noqa: E402
 import rapide  # noqa: E402
+import memoire  # noqa: E402
 import secrets  # noqa: E402
 
 HUD_DIR = Path(__file__).resolve().parent
@@ -74,7 +75,8 @@ def _config_model() -> str:
 MODEL = _config_model()
 
 SYSTEM_PROMPT = """Tu es JARVIS, l'assistant IA personnel de l'utilisateur, qui tourne en local sur son ordinateur ({os}).
-Tu parles toujours en français, avec un ton calme, élégant et une pointe d'humour britannique.
+Tu es un majordome britannique pince-sans-rire : tu appelles l'utilisateur « Monsieur », tu parles toujours en français,
+avec un ton calme et élégant, et tu proposes la suite logique quand c'est utile.
 Tes réponses sont lues à voix haute : 1 à 3 phrases courtes, sans markdown, sans listes, sans émojis.
 Date et heure actuelles : {now}.
 
@@ -238,7 +240,7 @@ def run_shell(commande: str) -> str:
     return f"Code de sortie {proc.returncode}.\n{out}"
 
 
-TOOLS += outils.TOOLS + widgets.TOOLS + telephone.TOOLS + schemas.TOOLS
+TOOLS += outils.TOOLS + widgets.TOOLS + telephone.TOOLS + schemas.TOOLS + memoire.TOOLS
 
 DIRECT_TOOLS = {
     "ouvrir_application": lambda a: tool_ouvrir_application(str(a.get("nom", ""))),
@@ -325,7 +327,7 @@ class Session:
                 result = DIRECT_TOOLS[name](args)
                 actions.append({"type": "tool", "name": name, "args": args, "result": result})
                 self._tool_result(name, result)
-            elif any(name in m.HANDLERS for m in (outils, widgets, telephone, schemas)):
+            elif any(name in m.HANDLERS for m in (outils, widgets, telephone, schemas, memoire)):
                 try:
                     result, ui = execute_tool(name, args)
                 except Exception as exc:  # noqa: BLE001 - signalé au modèle
@@ -427,6 +429,8 @@ def execute_tool(name: str, args: dict) -> tuple[str, list[dict]]:
         return telephone.HANDLERS[name](args)
     if name in schemas.HANDLERS:
         return schemas.HANDLERS[name](args)
+    if name in memoire.HANDLERS:
+        return memoire.HANDLERS[name](args)
     return f"Outil inconnu : {name}", []
 
 
@@ -533,7 +537,32 @@ def write_token() -> None:
         pass
 BUS = cerveau_claude.EventBus()
 BRAIN = cerveau_claude.ClaudeBrain(PORT, INTERNAL_TOKEN, execute_tool, run_shell, BUS, current_autonomy,
-                                   lambda: VITESSES[current_speed()])
+                                   lambda: VITESSES[current_speed()], memoire.resume)
+memoire.on_change = lambda kind, liste: BUS.push("memoire_sync", genre=kind, liste=liste)
+
+
+def secrets_locaux() -> dict:
+    """Clés optionnelles (ElevenLabs, Picovoice) : variables d'environnement ou ~/.openjarvis/hud-secrets.json."""
+    try:
+        d = json.loads((SETTINGS_PATH.parent / "hud-secrets.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        d = {}
+    return {
+        "elevenlabs_api_key": os.environ.get("ELEVENLABS_API_KEY") or d.get("elevenlabs_api_key", ""),
+        "elevenlabs_voice_id": os.environ.get("ELEVENLABS_VOICE_ID") or d.get("elevenlabs_voice_id", "JBFqnCBsd6RMkjVDRZzb"),
+        "picovoice_access_key": os.environ.get("PICOVOICE_ACCESS_KEY") or d.get("picovoice_access_key", ""),
+    }
+
+
+def elevenlabs(text: str) -> bytes:
+    sec = secrets_locaux()
+    req = urllib.request.Request(
+        f"https://api.elevenlabs.io/v1/text-to-speech/{urllib.parse.quote(sec['elevenlabs_voice_id'])}/stream?output_format=mp3_44100_64&optimize_streaming_latency=3",
+        data=json.dumps({"text": text[:800], "model_id": "eleven_flash_v2_5", "language_code": "fr",
+                         "voice_settings": {"stability": 0.45, "similarity_boost": 0.8, "style": 0.15}}).encode("utf-8"),
+        headers={"xi-api-key": sec["elevenlabs_api_key"], "Content-Type": "application/json", "Accept": "audio/mpeg"}, method="POST")
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return resp.read()
 
 
 
@@ -652,6 +681,12 @@ class Handler(BaseHTTPRequestHandler):
             if not secrets.compare_digest(self.headers.get("X-Jarvis-Token", ""), INTERNAL_TOKEN):
                 return self._send(403, b"Forbidden", "text/plain")
             return self._json(200, {"tools": TOOLS})
+        if path == "/api/config":
+            sec = secrets_locaux()
+            return self._json(200, {"mode": "local", "llm": True, "elevenlabs": bool(sec["elevenlabs_api_key"]),
+                                    "picovoice": sec["picovoice_access_key"] or None, "codeRequis": False})
+        if path == "/api/memoire":
+            return self._json(200, memoire.tout())
         if path == "/api/widgets":
             return self._json(200, {"widgets": widgets.load()})
         if path == "/api/widget/meteo":
@@ -665,10 +700,10 @@ class Handler(BaseHTTPRequestHandler):
         if path in STATIC:
             name, ctype = STATIC[path]
             return self._send(200, (HUD_DIR / name).read_bytes(), ctype)
-        if path.startswith("/vendor/"):
+        if path.startswith("/vendor/") or path.startswith("/js/"):
             target = (HUD_DIR / urllib.parse.unquote(path.lstrip("/"))).resolve()
-            vendor = (HUD_DIR / "vendor").resolve()
-            if vendor in target.parents and target.is_file():
+            base = (HUD_DIR / path.strip("/").split("/")[0]).resolve()
+            if base in target.parents and target.is_file():
                 ctype = VENDOR_TYPES.get(target.suffix, "application/octet-stream")
                 return self._send(200, target.read_bytes(), ctype)
         self._send(404, b"Not found", "text/plain")
@@ -712,6 +747,17 @@ class Handler(BaseHTTPRequestHandler):
                 if BRAIN.confirm(pid, approve):
                     return self._json(200, {"reply": "", "actions": [], "pending": None, "async": True})
                 return self._json(200, SESSION.confirm(pid, approve))
+            if path == "/api/memoire/sync":
+                d = memoire.fusionner(data.get("faits") or [], data.get("notes") or [])
+                return self._json(200, d)
+            if path == "/api/voix":
+                if not secrets_locaux()["elevenlabs_api_key"]:
+                    return self._json(501, {"error": "ElevenLabs non configuré."})
+                try:
+                    audio = elevenlabs(str(data.get("text", "")))
+                except Exception as exc:  # noqa: BLE001
+                    return self._json(502, {"error": f"ElevenLabs indisponible : {exc}"})
+                return self._send(200, audio, "audio/mpeg")
             if path == "/api/widgets/remove":
                 text, _ = widgets.t_retirer({"cible": str(data.get("id", ""))})
                 return self._json(200, {"ok": True, "text": text})

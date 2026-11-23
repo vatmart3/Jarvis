@@ -8,6 +8,9 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;500;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+<script type="importmap">
+{ "imports": { "three": "/vendor/three/three.module.js", "three/addons/": "/vendor/three/addons/" } }
+</script>
 <style>
   :root {
     --bg: #03060c;
@@ -58,8 +61,14 @@
   body.map-on #maptitle.show { opacity: 1; }
 
   /* ---------- Panneaux ---------- */
-  #panels { position: fixed; z-index: 455; right: 48px; top: 130px; width: min(380px, calc(100% - 96px)); display: flex; flex-direction: column; gap: 14px;
-    max-height: calc(100vh - 330px); overflow: hidden; }
+  /* Calque des panneaux : plein écran ; chaque panneau (.panel) est en position absolue, déplaçable à la main. */
+  #panels { position: fixed; inset: 0; z-index: 455; pointer-events: none; perspective: 1100px; }
+  #panels .panel { position: absolute; animation-fill-mode: backwards; width: min(380px, calc(100vw - 32px)); pointer-events: auto; --s: 1; --ry: -7deg; --tx: 0px; --ty: 0px;
+    transform: translate(var(--tx), var(--ty)) rotateY(var(--ry)) scale(var(--s)); transform-origin: center;
+    transition: left .5s cubic-bezier(.2, .9, .3, 1), top .5s cubic-bezier(.2, .9, .3, 1), box-shadow .2s; }
+  #panels .panel.drag { transition: none; box-shadow: 0 0 40px rgba(73, 198, 255, .35); cursor: grabbing; }
+  #panels .panel.vise { box-shadow: 0 0 34px rgba(73, 198, 255, .3); }
+  #panels .panel.ejecte { transition: transform .55s cubic-bezier(.4, 0, 1, 1), opacity .55s; opacity: 0; }
   .card { position: relative; background: linear-gradient(160deg, rgba(10, 30, 50, .82), rgba(3, 10, 20, .88)); border: 1px solid var(--cyan-faint);
     border-left: 2px solid var(--cyan); padding: 14px 16px 14px 18px; box-shadow: 0 0 24px rgba(73, 198, 255, .1);
     animation: slidein .55s cubic-bezier(.2, .9, .3, 1) both; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
@@ -267,6 +276,52 @@
   .s-seg { fill: none; stroke: var(--c); stroke-width: 46; filter: drop-shadow(0 0 8px var(--c)); }
   .s-total { font-family: var(--sans); font-weight: 300; font-size: 44px; fill: var(--text); }
 
+  /* ---------- Scène 3D, vision, diagnostic ---------- */
+  #holo { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 440; pointer-events: none; mix-blend-mode: screen; }
+  body.holo-on #orb svg { opacity: 0; }
+  body.holo-on #grid { opacity: .18; }
+  body.veille #holo { opacity: .35; transition: opacity 2s; }
+  body.veille #clock, body.veille #status, body.veille #leftcol { opacity: .25; transition: opacity 2s; }
+  /* Vision : vidéo en fond plein écran, miroir + filtre holographique, ligne de scan */
+  #visionvideo { position: fixed; inset: 0; width: 100vw; height: 100vh; object-fit: cover; transform: scaleX(-1); z-index: 1;
+    filter: grayscale(1) sepia(1) hue-rotate(165deg) saturate(3.2) brightness(.55) contrast(1.35); opacity: 0; transition: opacity 1s; pointer-events: none; }
+  body.vision-on #visionvideo { opacity: .62; }
+  body.vision-on.map-on #visionvideo { opacity: .22; }
+  #visionfx { position: fixed; inset: 0; z-index: 2; pointer-events: none; opacity: 0; transition: opacity .8s;
+    background: repeating-linear-gradient(0deg, rgba(73, 198, 255, .07) 0 1px, transparent 1px 4px); }
+  body.vision-on #visionfx { opacity: 1; }
+  #visionfx .vx-scan { position: absolute; left: 0; right: 0; height: 120px; top: -120px;
+    background: linear-gradient(180deg, transparent, rgba(73, 198, 255, .22) 85%, rgba(160, 230, 255, .7) 100%); animation: vxscan 4.5s linear infinite; }
+  @keyframes vxscan { to { transform: translateY(calc(100vh + 120px)); } }
+  #visionfx .vx-label { position: absolute; top: 112px; left: 50%; transform: translateX(-50%); font-family: var(--mono); font-size: 12px;
+    letter-spacing: .4em; color: var(--cyan); text-shadow: 0 0 10px var(--cyan); animation: blink 1.6s steps(2) infinite; }
+  body.map-on #visionfx .vx-label, body.stage-on #visionfx .vx-label { top: 132px; left: auto; right: 48px; transform: none; }
+  .hand-cursor { position: fixed; left: -14px; top: -14px; width: 28px; height: 28px; border-radius: 50%; z-index: 700; pointer-events: none;
+    border: 2px solid var(--cyan); box-shadow: 0 0 14px var(--cyan), inset 0 0 10px rgba(73, 198, 255, .4); opacity: 0; transition: opacity .2s, width .15s, height .15s, left .15s, top .15s; }
+  .hand-cursor::after { content: ""; position: absolute; inset: 9px; border-radius: 50%; background: #fff; box-shadow: 0 0 10px #fff; }
+  .hand-cursor.on { opacity: 1; }
+  .hand-cursor.pince { width: 18px; height: 18px; left: -9px; top: -9px; border-color: var(--warn); box-shadow: 0 0 18px var(--warn); }
+  .hand-cursor.pince::after { inset: 4px; background: var(--warn); }
+  #diagmini { display: flex; gap: 6px; justify-content: flex-end; margin-top: 4px; cursor: pointer; pointer-events: auto; }
+  .dg-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #3a4a5a; }
+  .dg-dot.ok { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .dg-dot.warn { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+  .dg-dot.err { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+  #diag { position: fixed; z-index: 620; top: 130px; right: 48px; width: 300px; background: rgba(6, 12, 22, .95); border: 1px solid var(--cyan-faint);
+    border-left: 2px solid var(--cyan); padding: 12px 14px; font-family: var(--mono); font-size: 12px; display: none; }
+  #diag.open { display: block; animation: slidein .4s ease both; }
+  #diag .dg-head { display: flex; justify-content: space-between; color: var(--cyan); letter-spacing: .2em; margin-bottom: 8px; }
+  #diag .dg-x { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 14px; }
+  #diag .dg-row { display: grid; grid-template-columns: 14px 70px 1fr; align-items: center; gap: 6px; padding: 4px 0; }
+  #diag .dg-row b { font-weight: normal; letter-spacing: .12em; color: var(--text); }
+  #diag .dg-txt { color: var(--muted); }
+  #diag .dg-cam { margin-top: 10px; width: 100%; background: none; border: 1px solid var(--cyan-soft); color: var(--cyan); padding: 8px; font-family: var(--mono); letter-spacing: .12em; cursor: pointer; }
+  #diag .dg-cam:hover { background: rgba(73, 198, 255, .1); }
+  #envbanner { position: fixed; z-index: 800; top: 0; left: 0; right: 0; display: flex; gap: 12px; align-items: center; justify-content: center; padding: 10px 16px;
+    background: rgba(70, 10, 18, .95); border-bottom: 1px solid var(--danger); color: #ffd6da; font-size: 15px; }
+  #envbanner button { background: none; border: 0; color: #ffd6da; cursor: pointer; font-size: 14px; }
+  @media (max-width: 760px) { #diag { right: 16px; left: 16px; width: auto; } }
+
   /* ---------- Mode épuré (par défaut) : aucun texte de conversation à l'écran ---------- */
   body.clean #log { display: none; }
   #status, #bar { transition: opacity .6s ease; }
@@ -342,7 +397,7 @@
     #log, #bar { left: 16px; width: calc(100% - 32px); }
     #log { bottom: 90px; } #bar { bottom: 24px; }
     body.map-on #orb { left: calc(100% - 70px); top: 120px; width: 96px; height: 96px; }
-    #panels { right: 16px; left: 16px; width: auto; top: 180px; max-height: 40vh; } #leftcol { left: 16px; top: 96px; width: 200px; }
+    #panels .panel { width: calc(100vw - 32px); } #leftcol { left: 16px; top: 96px; width: 200px; }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; }
@@ -401,12 +456,12 @@
 
 <div id="bar">
   <input id="input" type="text" placeholder="Écris à Jarvis…  (touche /)" autocomplete="off" aria-label="Message pour Jarvis">
-  <button class="btn" id="handsfree" title="Écoute permanente : dis « Jarvis » puis ta demande">Mains libres</button>
-  <button class="btn" id="brainbtn" title="Changer de cerveau : Claude (abonnement Claude) ou modèle local">Cerveau</button>
-  <button class="btn" id="speedbtn" title="Vitesse de Claude : Rapide (Haiku), Équilibré (Sonnet), Puissant (Opus)">Vitesse</button>
-  <button class="btn" id="autobtn" title="Propriétaire : Jarvis agit seul, sauf actions sensibles. Prudent : il demande tout.">Autonomie</button>
-  <button class="btn" id="voicebtn" title="Choisir la voix de Jarvis">Voix</button>
-  <button class="btn" id="mute" title="Couper ou rétablir la voix de Jarvis">Son on</button>
+  <button class="btn" id="handsfree" data-act="mains-libres" title="Écoute permanente : dis « Jarvis » puis ta demande">Mains libres</button>
+  <button class="btn" id="brainbtn" data-act="cerveau" title="Changer de cerveau : Claude (abonnement Claude) ou modèle local">Cerveau</button>
+  <button class="btn" id="speedbtn" data-act="vitesse" title="Vitesse de Claude : Rapide (Haiku), Équilibré (Sonnet), Puissant (Opus)">Vitesse</button>
+  <button class="btn" id="autobtn" data-act="autonomie" title="Propriétaire : Jarvis agit seul, sauf actions sensibles. Prudent : il demande tout.">Autonomie</button>
+  <button class="btn" id="voicebtn" data-act="voix" title="Choisir la voix de Jarvis">Voix</button>
+  <button class="btn" id="mute" data-act="son" title="Couper ou rétablir la voix de Jarvis">Son on</button>
 </div>
 <div id="voices" role="dialog" aria-label="Choisir la voix de Jarvis"></div>
 
@@ -416,18 +471,21 @@
   <pre id="confirm-cmd"></pre>
   <div class="row">
     <span>Dis « oui » ou « non »</span>
-    <button class="btn no" id="deny">Refuser (Échap)</button>
-    <button class="btn yes" id="allow">Autoriser (Entrée)</button>
+    <button class="btn no" id="deny" data-act="refuser">Refuser (Échap)</button>
+    <button class="btn yes" id="allow" data-act="autoriser">Autoriser (Entrée)</button>
   </div>
 </div>
 
 <script src="/vendor/leaflet/leaflet.js"></script>
 <script src="/schema.js"></script>
+<script type="module" src="/js/app.js"></script>
 <script>
 (() => {
   "use strict";
   const $ = (id) => document.getElementById(id);
   const body = document.body;
+  // Points d'accroche pour les modules (js/app.js) : voix en flux, cerveau en ligne, 3D, vision…
+  const ext = window.JARVIS_EXT = window.JARVIS_EXT || {};
 
   // ---------- Horloge ----------
   const tick = () => {
@@ -502,7 +560,7 @@
   // Garde la zone utile hors des panneaux (à droite) et de la transcription (en bas à gauche).
   function fitOpts(extra) {
     const wide = window.innerWidth > 760;
-    const right = wide && $("panels").children.length ? $("panels").offsetWidth + 90 : 120;
+    const right = wide && $("panels").querySelector(".panel:not(.place)") ? 470 : 120;
     const left = wide && ($("widgets").children.length || $("timers").children.length) ? $("leftcol").offsetWidth + 80 : (wide ? 110 : 30);
     return Object.assign({ paddingTopLeft: [left, 120], paddingBottomRight: [right, wide ? 150 : 200] }, extra);
   }
@@ -574,7 +632,7 @@
     const wide = window.innerWidth > 760;
     const padding = {
       left: wide && ($("widgets").children.length || $("timers").children.length) ? $("leftcol").offsetWidth + 90 : (wide ? 70 : 20),
-      right: wide && $("panels").children.length ? $("panels").offsetWidth + 100 : (wide ? 70 : 20),
+      right: wide && $("panels").querySelector(".panel:not(.place)") ? 480 : (wide ? 70 : 20),
       top: 120, bottom: wide ? 150 : 200,
     };
     body.classList.add("hint-off");
@@ -615,32 +673,88 @@
 
   let radarLayers = [], radarTimer = null;
   function stopRadar() {
+    startRadar.token = null;
     clearInterval(radarTimer); radarTimer = null;
     radarLayers.forEach((l) => l.remove()); radarLayers = [];
     $("radartag").classList.remove("show");
   }
+  function radarTick(frames, label) {
+    const tag = $("radartag"); tag.classList.add("show");
+    tag.querySelector("span").textContent = label;
+    let i = 0;
+    const show = () => {
+      radarLayers.forEach((l, k) => l.setOpacity(k === i ? 0.78 : 0));
+      const t = new Date(frames[i].time * 1000);
+      tag.querySelector(".t").textContent = t.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) + (frames[i].time * 1000 > Date.now() ? " · PRÉVISION" : "");
+      tag.querySelector(".bar i").style.width = ((i + 1) / frames.length) * 100 + "%";
+      i = (i + 1) % frames.length;
+    };
+    show();
+    radarTimer = setInterval(show, 700);
+  }
+
+  function radarPane() {
+    if (!map.getPane("radar")) { const pane = map.createPane("radar"); pane.style.zIndex = 350; pane.classList.add("leaflet-radar-pane"); pane.style.pointerEvents = "none"; }
+  }
+
+  // 1) Vrai radar RainViewer (gratuit, sans clé) ; 2) repli : carte des pluies calculée avec Open-Meteo.
   async function startRadar() {
     stopRadar();
     if (!map) return;
+    radarPane();
+    const token = {}; startRadar.token = token;
     try {
-      if (!map.getPane("radar")) { const pane = map.createPane("radar"); pane.style.zIndex = 350; pane.classList.add("leaflet-radar-pane"); pane.style.pointerEvents = "none"; }
-      const d = await (await fetch("https://api.rainviewer.com/public/weather-maps.json")).json();
+      const d = await (await fetch("https://api.rainviewer.com/public/weather-maps.json", { cache: "no-store" })).json();
       const frames = [...(d.radar?.past || []), ...(d.radar?.nowcast || [])].slice(-12);
-      if (!frames.length) return;
-      radarLayers = frames.map((f) => L.tileLayer(`${d.host}${f.path}/256/{z}/{x}/{y}/4/1_1.png`,
-        { pane: "radar", opacity: 0, maxNativeZoom: 7, maxZoom: 19, attribution: 'Radar &copy; <a href="https://www.rainviewer.com/">RainViewer</a>' }).addTo(map));
-      const tag = $("radartag"); tag.classList.add("show");
-      let i = 0;
-      const show = () => {
-        radarLayers.forEach((l, k) => l.setOpacity(k === i ? 0.75 : 0));
-        const t = new Date(frames[i].time * 1000);
-        tag.querySelector(".t").textContent = t.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) + (frames[i].time * 1000 > Date.now() ? " · PRÉVISION" : "");
-        tag.querySelector(".bar i").style.width = ((i + 1) / frames.length) * 100 + "%";
-        i = (i + 1) % frames.length;
-      };
-      show();
-      radarTimer = setInterval(show, 650);
-    } catch (e) { console.warn("Radar indisponible", e); }
+      if (!frames.length) throw new Error("aucune image radar");
+      if (startRadar.token !== token) return;
+      let ok = 0, ko = 0;
+      radarLayers = frames.map((f) => {
+        const l = L.tileLayer(`${d.host}${f.path}/256/{z}/{x}/{y}/2/1_1.png`,
+          { pane: "radar", opacity: 0, maxNativeZoom: 7, maxZoom: 19, attribution: 'Radar &copy; <a href="https://www.rainviewer.com/">RainViewer</a>' });
+        l.on("tileload", () => ok++); l.on("tileerror", () => ko++);
+        return l.addTo(map);
+      });
+      radarTick(frames, "RADAR PLUIE");
+      // Si les tuiles ne se chargent pas (service limité ou bloqué), on bascule sur le modèle Open-Meteo.
+      setTimeout(() => { if (startRadar.token === token && ok === 0) { console.warn("Radar RainViewer indisponible", ko); startRainModel(token); } }, 5000);
+    } catch (e) {
+      console.warn("Radar RainViewer indisponible :", e);
+      startRainModel(token);
+    }
+  }
+
+  // Grille de précipitations Open-Meteo (heures passées + prévision) rendue en images animées sur la carte.
+  async function startRainModel(token) {
+    if (!map || startRadar.token !== token) return;
+    stopRadar(); startRadar.token = token;
+    const c = map.getCenter(), france = c.lat > 41 && c.lat < 52 && c.lng > -6 && c.lng < 10 && map.getZoom() <= 7;
+    const [la0, la1, lo0, lo1] = france ? [41.2, 51.4, -5.4, 9.8] : [c.lat - 3, c.lat + 3, c.lng - 4, c.lng + 4];
+    const rows = 19, cols = 22, lats = [], lons = [];
+    for (let r = 0; r < rows; r++) for (let k = 0; k < cols; k++) {
+      lats.push((la1 - (r * (la1 - la0)) / (rows - 1)).toFixed(2)); lons.push((lo0 + (k * (lo1 - lo0)) / (cols - 1)).toFixed(2));
+    }
+    try {
+      const url = "https://api.open-meteo.com/v1/forecast?hourly=precipitation&past_hours=3&forecast_hours=4&timezone=UTC&latitude=" + lats.join(",") + "&longitude=" + lons.join(",");
+      let data = await (await fetch(url)).json();
+      if (!Array.isArray(data)) data = [data];
+      if (startRadar.token !== token || !data[0]?.hourly) return;
+      const times = data[0].hourly.time, frames = [];
+      const ramp = (v) => v < 0.1 ? [0, 0, 0, 0] : v < 0.5 ? [90, 170, 255, 120] : v < 1.5 ? [60, 210, 140, 160] : v < 4 ? [250, 225, 70, 190] : v < 8 ? [255, 150, 50, 210] : [255, 70, 80, 225];
+      times.forEach((t, ti) => {
+        const cv = document.createElement("canvas"); cv.width = cols; cv.height = rows;
+        const ctx = cv.getContext("2d"), img = ctx.createImageData(cols, rows);
+        data.forEach((loc, i) => { const v = loc.hourly.precipitation[ti] || 0; img.data.set(ramp(v), i * 4); });
+        ctx.putImageData(img, 0, 0);
+        const big = document.createElement("canvas"); big.width = cols * 16; big.height = rows * 16;
+        const bctx = big.getContext("2d"); bctx.imageSmoothingEnabled = true; bctx.filter = "blur(10px)";
+        bctx.drawImage(cv, 0, 0, big.width, big.height);
+        frames.push({ time: Date.parse(t + "Z") / 1000, url: big.toDataURL() });
+      });
+      radarLayers = frames.map((f) => L.imageOverlay(f.url, [[la0, lo0], [la1, lo1]], { pane: "radar", opacity: 0, interactive: false,
+        attribution: 'Pluie &copy; <a href="https://open-meteo.com/">Open-Meteo</a>' }).addTo(map));
+      radarTick(frames, "PLUIE (MODÈLE)");
+    } catch (e) { console.warn("Carte des pluies indisponible", e); }
   }
 
   function showWeatherMap(a) {
@@ -673,23 +787,34 @@
   }
 
   // ---------- Panneaux ----------
-  function closeCard(el) { el.classList.add("out"); setTimeout(() => el.remove(), 400); }
+  function closeCard(el) { el.classList.add("out"); setTimeout(() => { el.remove(); layoutPanels(); }, 400); }
+  // Mise en page automatique des panneaux non déplacés à la main : colonne à droite, du haut vers le bas.
+  function layoutPanels() {
+    const wide = window.innerWidth > 760, panelsEl = $("panels");
+    let top = wide ? 130 : 180;
+    [...panelsEl.querySelectorAll(".panel:not(.place):not(.out):not(.ejecte)")].forEach((p, i) => {
+      if (i >= 3 || top > window.innerHeight - 160) { p.remove(); return; }
+      p.style.left = (wide ? window.innerWidth - 48 - p.offsetWidth : 16) + "px";
+      p.style.top = top + "px";
+      top += p.offsetHeight + 14;
+    });
+  }
+  window.addEventListener("resize", layoutPanels);
   function card(title, kind) {
     const panels = $("panels");
-    if (kind) panels.querySelectorAll(`.card[data-kind="${kind}"]`).forEach((c) => c.remove());
+    if (kind) panels.querySelectorAll(`.panel[data-kind="${kind}"]`).forEach((c) => c.remove());
     const el = document.createElement("section");
-    el.className = "card"; if (kind) el.dataset.kind = kind;
+    el.className = "card panel"; if (kind) el.dataset.kind = kind;
     const h = document.createElement("h4"); h.textContent = title; el.appendChild(h);
     const x = document.createElement("button"); x.className = "x"; x.textContent = "✕"; x.setAttribute("aria-label", "Fermer");
-    x.onclick = () => closeCard(el); el.appendChild(x);
+    x.dataset.act = "fermer"; el.appendChild(x);
     panels.prepend(el);
-    while (panels.children.length > 3) panels.lastChild.remove();
-    requestAnimationFrame(() => {
-      while (panels.children.length > 1 && panels.scrollHeight > panels.clientHeight + 2) panels.lastChild.remove();
-    });
+    requestAnimationFrame(layoutPanels);
+    setTimeout(layoutPanels, 60); // après le remplissage du contenu
     return el;
   }
   function showPanel(a) {
+    if (ext.panel3d && ext.panel3d({ kind: "panel", titre: a.titre, lignes: a.lignes })) return;
     const el = card(a.titre);
     const ul = document.createElement("ul");
     (a.lignes || []).forEach((t, i) => { const li = document.createElement("li"); li.textContent = t; li.style.animationDelay = `${0.25 + i * 0.12}s`; ul.appendChild(li); });
@@ -697,6 +822,7 @@
   }
   const DAY = (iso) => new Date(iso + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "short" });
   function showWeather(w) {
+    if (ext.panel3d && ext.panel3d({ kind: "meteo", id: "meteo", titre: "Météo · " + w.lieu, meteo: w })) return;
     const el = card("Météo · " + w.lieu, "weather");
     el.insertAdjacentHTML("beforeend", `<div class="wx-now"><span class="t"></span><span class="e"></span></div><div class="wx-meta"></div><div class="wx-days"></div>`);
     el.querySelector(".t").textContent = `${w.temp}°`;
@@ -778,6 +904,7 @@
   const setState = (s) => {
     body.classList.remove("listening", "thinking", "speaking");
     if (s) body.classList.add(s);
+    if (ext.onState) ext.onState(s);
     if (s !== "thinking") activity("");
   };
 
@@ -808,7 +935,9 @@
   }
   const currentChoice = () => voiceChoice || defaultChoice();
 
+  const isSpeaking = () => speakingNow || (ext.isSpeaking ? ext.isSpeaking() : false);
   function stopSpeaking() {
+    if (ext.stop) ext.stop();
     if (synth) synth.cancel();
     player.pause(); player.removeAttribute("src");
   }
@@ -843,6 +972,7 @@
   async function speak(text, choice) {
     if (!voiceOn || !text) return;
     choice = choice || currentChoice();
+    if (ext.speak) return ext.speak(text, choice);
     stopSpeaking();
     speakingNow = true; setState("speaking");
     try {
@@ -869,6 +999,7 @@
   function voiceItem(choice, label, tags, disabled) {
     const b = document.createElement("button");
     b.className = "voice" + (same(choice, currentChoice()) ? " selected" : "");
+    b.dataset.act = "choisir-voix";
     b.disabled = !!disabled;
     const name = document.createElement("span"); name.className = "grow"; name.textContent = label;
     b.appendChild(name);
@@ -939,6 +1070,7 @@
         else if (a.type === "weather") showWeather(a.meteo);
         else if (a.type === "system") showSystem(a.metriques);
         else if (a.type === "timer") startTimer(a.secondes, a.libelle);
+        else if (ext.action && ext.action(a)) { /* action gérée par un module (notes, 3D…) */ }
         else if (a.type === "tool") addLine("action", "▸ " + a.result);
         else if (a.type === "shell") addLine("action", "$ " + a.commande + "\n" + a.result);
       } catch (e) { console.warn("Action impossible", a, e); }
@@ -947,16 +1079,18 @@
   async function handleResult(r) {
     applyActions(r.actions);
     if (r.pending) return openConfirm(r.pending);
-    if (r.reply) { addLine("jarvis", r.reply); await speak(r.reply); }
+    if (r.reply) { addLine("jarvis", r.reply); if (!r.streamed) await speak(r.reply); }
   }
   async function send(text) {
     text = (text || "").trim();
     if (!text) return;
     if (pending) return answerConfirmByVoice(text);
+    // Commandes locales (ex. « ouvre la caméra ») : traitées avant l'appel à l'IA.
+    if (ext.intercept && ext.intercept(text)) { addLine("user", text); return; }
     if (busy) { addLine("action", "Un instant, je termine la demande en cours…"); return; }
     addLine("user", text);
     busy = true; setState("thinking");
-    try { await handleResult(await api("/api/ask", { text })); }
+    try { await handleResult(ext.ask ? await ext.ask(text) : await api("/api/ask", { text })); }
     catch (e) { addLine("error", e.message); }
     finally { busy = false; if (body.classList.contains("thinking")) setState(null); }
   }
@@ -990,8 +1124,23 @@
     if (/\b(non|annule|refuse|stop|arrête)\b/.test(t)) return decide(false);
     speak("Dites oui pour autoriser, ou non pour refuser.");
   }
-  $("allow").onclick = () => decide(true);
-  $("deny").onclick = () => decide(false);
+  // act() : point d'entrée unique des boutons [data-act] (souris, clavier ou pincement de la main).
+  const ACTS = {
+    fermer: (el) => { const p = el.closest(".panel"); if (p) closeCard(p); },
+    autoriser: () => decide(true),
+    refuser: () => decide(false),
+  };
+  function act(el) {
+    if (!el) return false;
+    const nom = el.dataset.act;
+    if (ACTS[nom]) ACTS[nom](el); else el.click();
+    return true;
+  }
+  window.act = act;
+  document.addEventListener("click", (e) => {
+    const t = e.target.closest && e.target.closest("[data-act]");
+    if (t && ACTS[t.dataset.act]) { e.preventDefault(); ACTS[t.dataset.act](t); }
+  });
 
   // ---------- Reconnaissance vocale ----------
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1006,8 +1155,12 @@
         const r = ev.results[i];
         if (r.isFinal) finalText += r[0].transcript; else interim += r[0].transcript;
       }
+      const heardAll = (finalText || interim).trim();
+      // Barge-in : Jarvis se tait dès que l'utilisateur parle (en ignorant l'écho de sa propre voix).
+      if (ext.bargeIn && isSpeaking() && heardAll.split(/\s+/).length >= 2 && !(ext.isEcho && ext.isEcho(heardAll))) ext.bargeIn(heardAll);
       if (handsFree) {
-        const heard = (finalText || interim).trim();
+        if (ext.canListen && !ext.canListen()) return; // n'écoute que si l'utilisateur regarde l'écran
+        const heard = heardAll;
         const m = heard.match(/\b(jarvis|jarvice|djarvis)\b[\s,.!?]*(.*)/i);
         if (pending && finalText) { setInterim(""); return send(finalText); }
         if (!m) return;
@@ -1030,12 +1183,12 @@
     rec.onend = () => {
       recActive = false; setInterim("");
       if (body.classList.contains("listening")) setState(null);
-      if (handsFree) setTimeout(() => { if (handsFree && !recActive && !speakingNow) startRec(); }, 250);
+      if (handsFree) setTimeout(() => { if (handsFree && !recActive && (!isSpeaking() || ext.bargeIn)) startRec(); }, 250);
     };
   }
   function startRec() {
     if (!rec || recActive) return;
-    if (speakingNow) stopSpeaking();
+    if (isSpeaking() && !ext.bargeIn) stopSpeaking();
     rec.continuous = handsFree;
     try { rec.start(); } catch (_) { /* déjà démarré */ }
   }
@@ -1057,8 +1210,8 @@
   // En mains libres, on coupe le micro pendant que Jarvis parle (évite qu'il s'entende).
   setInterval(() => {
     if (!handsFree || !rec) return;
-    if (speakingNow && recActive) rec.abort();
-    else if (!speakingNow && !recActive && (!busy || pending)) startRec();
+    if (isSpeaking() && recActive && !ext.bargeIn) rec.abort();
+    else if (!recActive && (!isSpeaking() || ext.bargeIn) && (!busy || pending || ext.bargeIn)) startRec();
   }, 600);
 
   $("orb").onclick = toggleListen;
@@ -1094,6 +1247,7 @@
     const el = document.createElement("section"); el.className = "wcard";
     const t = document.createElement("div"); t.className = "wt"; t.textContent = w.titre || title; el.appendChild(t);
     const x = document.createElement("button"); x.className = "wx"; x.textContent = "✕"; x.setAttribute("aria-label", "Retirer ce widget");
+    x.dataset.act = "widget-retirer";
     x.onclick = async () => { await api("/api/widgets/remove", { id: w.id }).catch(() => {}); loadWidgets(); };
     el.appendChild(x);
     return el;
@@ -1258,12 +1412,26 @@
         else if (e.type === "pending") openConfirm(e.pending);
         else if (e.type === "pending_closed" && pending && pending.id === e.id) { pending = null; body.classList.remove("confirm"); }
         else if (e.type === "wake") onWake();
+        else if (ext.event && ext.event(e)) { /* géré par les modules */ }
         else if (e.type === "activity" && ACTIVITY[e.outil]) { activity(ACTIVITY[e.outil]); addLine("action", "▸ " + ACTIVITY[e.outil]); }
       }
     } catch (_) { /* serveur momentanément indisponible */ }
   }
-  setInterval(pollEvents, 600); pollEvents();
+  (function loopEvents() {
+    const cloud = ext.mode === "cloud";
+    if (!cloud) pollEvents();
+    setTimeout(loopEvents, cloud ? 2000 : busy ? 150 : 600); // plus réactif pendant une réponse (voix en flux)
+  })();
   if (!SR) $("micmode").textContent = "indisponible (Chrome/Safari)";
+  // API du cœur pour les modules
+  window.JARVIS = {
+    $, body, store, api, act, layoutPanels, closeCard, applyActions, handleResult, send, speak, stopSpeaking, setState, addLine, toast, activity,
+    openConfirm, decide, startRec, toggleListen, currentChoice, showWeatherMap, goHome, zoomMap, setTitle, revealMap,
+    get map() { return map; }, get pending() { return pending; }, get busy() { return busy; },
+    get recActive() { return recActive; }, get handsFree() { return handsFree; }, get voiceOn() { return voiceOn; },
+    setHandsFree(v) { if (!rec || handsFree === v) return; handsFree = v; updateHandsFree(); if (recActive) rec.stop(); else if (v) startRec(); },
+    stopRec() { if (rec && recActive) rec.abort(); },
+  };
 })();
 </script>
 </body>
