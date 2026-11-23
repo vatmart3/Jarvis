@@ -1,0 +1,29 @@
+# Configuration OpenJarvis — copiée dans ~/.openjarvis/config.toml par install.sh
+#
+# Démarrage : ollama + un petit modèle local, aucun outil, données 100 % locales.
+#   jarvis                 # discuter dans le terminal
+#   jarvis ask "Bonjour"   # question unique
+#   jarvis serve           # API compatible OpenAI sur http://127.0.0.1:8000
+
+[engine]
+default = "ollama"
+
+[engine.ollama]
+host = "http://localhost:11434"
+
+[intelligence]
+default_model = "qwen3.5:4b"        # léger et rapide (~3 Go)
+# default_model = "qwen3.5:2b"      # machine modeste (téléchargé par l'installeur)
+# default_model = "qwen3.5:9b"      # meilleure qualité, 16 Go de RAM conseillés
+temperature = 0.7
+
+[agent]
+default_agent = "simple"             # conversation simple, sans outils
+# default_agent = "orchestrator"     # choisit des outils automatiquement
+
+[server]
+host = "127.0.0.1"                   # accessible uniquement depuis ta machine
+port = 8000
+
+[security]
+profile = "personal"                 # masque les données sensibles, limite le débit
