@@ -86,6 +86,9 @@ directement. Toute commande sur l'ordinateur passe par la fenêtre orange et att
 | Mains libres | Bouton « Mains libres », puis dis « **Jarvis**, … » quand tu veux |
 | Écrire | Touche **/** puis Entrée |
 | Voix | Bouton « Voix » pour choisir, « Son on/off » pour couper |
+| Afficher / masquer la conversation écrite | Touche **T** (masquée par défaut : écran épuré) |
+
+Les boutons et le statut se cachent après 4 secondes sans bouger la souris, et reviennent au moindre mouvement.
 
 ### Exemples de demandes
 
