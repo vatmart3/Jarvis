@@ -1,5 +1,5 @@
 // Panneau « Réglages » : gros boutons [data-act], utilisables à la souris, au clavier ou en pinçant avec la main.
-export function createReglages({ J, voix, sfx, cfg, camera, suivi, deplacement, diag, donnees, yeux }) {
+export function createReglages({ J, voix, sfx, cfg, camera, deplacement, diag, donnees }) {
   const GROUPES = () => [
     cfg.mode === "local" && ["Cerveau", "cerveau", [["claude", "Claude"], ["local", "Local"]]],
     cfg.mode === "local" && ["Vitesse", "vitesse", [["rapide", "Rapide"], ["equilibre", "Équilibré"], ["puissant", "Puissant"]]],
@@ -7,11 +7,7 @@ export function createReglages({ J, voix, sfx, cfg, camera, suivi, deplacement, 
     ["Voix", "son", [["on", "Activée"], ["off", "Coupée"], ["choisir", "Choisir…"]]],
     ["Écoute « Jarvis »", "ecoute", [["on", "Mains libres"], ["off", "Sur demande"]]],
     ["Caméra", "camera", [["on", "Ouverte"], ["off", "Fermée"]]],
-    ["Suivi du visage", "suivi", [["on", "Affiché"], ["off", "Masqué"]]],
     ["Menu des données", "menu", [["auto", "Avec la caméra"], ["on", "Toujours"], ["off", "Masqué"]]],
-    ["Clin d'œil", "clin", [["clic", "Cliquer"], ["menu", "Menu"], ["ecoute", "Écouter"], ["off", "Rien"]]],
-    ["Double clignement", "double", [["ecoute", "Écouter"], ["menu", "Menu"], ["reglages", "Réglages"], ["off", "Rien"]]],
-    ["Yeux fermés 1 s", "fermes", [["silence", "Faire taire"], ["off", "Rien"]]],
     ["Affichage", "affichage", [["epure", "Épuré"], ["texte", "Conversation"]]],
     ["Disposition", "disposition", [["reset", "Réinitialiser"]]],
     ["Diagnostic", "diag", [["ouvrir", "Ouvrir"]]],
@@ -23,7 +19,7 @@ export function createReglages({ J, voix, sfx, cfg, camera, suivi, deplacement, 
     return {
       cerveau: etatServeur.cerveau, vitesse: etatServeur.vitesse, autonomie: etatServeur.autonomie,
       son: J.voiceOn ? "on" : "off", ecoute: J.handsFree ? "on" : "off", camera: camera.ouverte() ? "on" : "off",
-      suivi: suivi.visible ? "on" : "off", menu: donnees.mode, clin: yeux.get("clin"), double: yeux.get("double"), fermes: yeux.get("fermes"),
+      menu: donnees.mode,
       affichage: document.body.classList.contains("clean") ? "epure" : "texte",
     };
   }
@@ -56,10 +52,8 @@ export function createReglages({ J, voix, sfx, cfg, camera, suivi, deplacement, 
       case "son": if (val === "choisir") J.$("voicebtn").click(); else if ((val === "on") !== J.voiceOn) J.$("mute").click(); break;
       case "ecoute": J.setHandsFree(val === "on"); break;
       case "camera": if (val === "on") await camera.ouvrir(); else camera.fermer(); break;
-      case "suivi": suivi.afficher(val === "on"); try { localStorage.setItem("jarvis.suivi", val); } catch (_) {} break;
       case "affichage": document.body.classList.toggle("clean", val === "epure"); J.store.set("jarvis.clean", val === "epure"); break;
       case "menu": donnees.definirMode(val); break;
-      case "clin": case "double": case "fermes": yeux.set(cle, val); break;
       case "disposition": deplacement.reinitialiser(); voix.say("Disposition réinitialisée, Monsieur."); break;
       case "diag": diag.ouvrir(); break;
     }

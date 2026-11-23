@@ -84,36 +84,30 @@ directement. Toute commande sur l'ordinateur passe par la fenêtre orange et att
 
 ### Vision, gestes et interface 3D
 
-- **Scène 3D** : orbe holographique animé par la voix de Jarvis, particules, halo lumineux, perspective qui suit ta tête.
+- **Scène 3D** : orbe holographique animé par la voix de Jarvis, particules, halo lumineux.
 - **Caméra** : dis « **ouvre la caméra** » ou « active la vision », et « **ferme la caméra** » pour l'arrêter.
   La vidéo passe en fond (miroir, filtre holographique) et Jarvis suit tes deux mains (MediaPipe, tout reste sur le Mac).
-- **Gestes sur les panneaux** :
-  - **pincer** un bouton pour cliquer, ou un panneau pour le saisir ;
+- **Tout se fait avec les mains** (plus de suivi du visage ni des yeux : toute la puissance va aux mains) :
+  - **pincer** (pouce contre index) un bouton pour cliquer, ou un élément pour le saisir ; le curseur est
+    « aimanté » vers les boutons proches et s'immobilise quand les doigts se rapprochent ;
   - **glisser** pour déplacer, **lâcher vite** pour éjecter ;
-  - **deux mains** pour zoomer ;
-  - **poing** tenu 0,9 s pour fermer ;
-  - **pouce levé** pour valider ;
-  - **main ouverte** pour couper la parole.
-- **Visage** (caméra ouverte) : Jarvis te salue quand tu t'assois (briefing météo et notes le matin), n'écoute « Jarvis »
-  que si tu regardes l'écran, et se met en veille après 2 minutes sans personne.
+  - **deux mains** qui pincent pour zoomer ;
+  - **poing fermé** tenu ~0,7 s (un anneau rouge se remplit) pour **tout fermer** : panneaux, réglages, carte, schéma
+    et modules posés ; le menu des données reste ;
+  - **pouce levé** pour valider, **main ouverte** pour faire taire Jarvis, **« V »** (index + majeur) pour qu'il t'écoute.
+- **Présence** (caméra ouverte) : Jarvis te salue quand tu arrives (briefing météo et notes le matin) et se met en veille
+  après 2 minutes sans mouvement.
 - **Voix en flux** : Jarvis commence à parler dès la première phrase prête, et se tait si tu lui coupes la parole.
 - **Mémoire et notes** : « retiens que j'habite à Sète », « note : rappeler Paul » ; c'est gardé entre les sessions.
 - **Réglages** : « ouvre les réglages » ou bouton Réglages. Gros boutons utilisables en pinçant : cerveau, vitesse,
-  autonomie, voix, écoute, caméra, suivi du visage, menu des données, commandes des yeux, affichage, disposition, diagnostic.
+  autonomie, voix, écoute, caméra, menu des données, affichage, disposition, diagnostic.
 - **Tout se déplace** : panneaux, widgets, minuteurs, horloge. Pince et glisse avec la main, ou glisse le titre à la souris.
   Les widgets et l'horloge restent là où tu les poses (« Réinitialiser » dans les réglages pour tout remettre).
-- **Suivi du visage affiché** (caméra ouverte) : cadre, contours des yeux, iris, clignements, direction du regard.
 - **Caméra ouverte** : Jarvis se range en bas à droite et le **menu des données** s'ouvre à gauche
   (météo, position GPS, radar pluie, heures du monde, système, notes, minuteur, calendrier).
   Pince une tuile, glisse-la, lâche : le module est posé là, et il y reste après redémarrage.
-  Pour le retirer : le reposer sur le menu, poing tenu dessus, lancer vite, ou ✕.
+  Pour le retirer : le reposer sur le menu, le lancer vite, ou ✕ (le poing fermé retire tout).
   À la voix : « ouvre le menu », « ferme le menu », « place le module radar ».
-- **Commandes des yeux** (réglables dans Réglages) :
-  - **clin d'œil** = cliquer ce que vise ta main (sans main : ouvrir ou fermer le menu) ;
-  - **deux clignements rapides** = Jarvis t'écoute ;
-  - **yeux fermés 1 s** = Jarvis se tait.
-
-  Un clignement naturel ne déclenche rien.
 - **Diagnostic** : touche **D** (voyants MICRO, CAMÉRA, VISION, MAINS, IA).
 - Clés optionnelles (ElevenLabs pour la voix, Picovoice pour le mot d'éveil) : fichier `~/.openjarvis/hud-secrets.json`
   avec `elevenlabs_api_key`, `elevenlabs_voice_id`, `picovoice_access_key`.

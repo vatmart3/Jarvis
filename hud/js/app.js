@@ -7,11 +7,9 @@ import { createCloudBrain } from "./llm.js";
 import { OUTILS } from "./outils-web.js";
 import { pont } from "./pont.js";
 import { createDiag } from "./diag.js";
-import { createSuivi } from "./suivi.js";
 import { createDeplacement } from "./deplacer.js";
 import { createReglages } from "./reglages.js";
 import { createDonnees } from "./donnees.js";
-import { createYeux } from "./yeux.js";
 
 const J = window.JARVIS, ext = window.JARVIS_EXT;
 if (!J) throw new Error("Cœur Jarvis absent");
@@ -149,7 +147,6 @@ motEveil();
 
 // ---------- vision (ouverte à la voix : « ouvre la caméra », « active la vision », « ferme la caméra ») ----------
 let vision = null;
-ext.canListen = () => !vision || !vision.ouverte || !vision.visage || vision.regarde;
 const norm = (t) => String(t).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9' ]+/g, " ").trim();
 const RX_FERMER = /\b(ferme|fermer|eteins|eteindre|coupe|couper|desactive|desactiver|arrete|arreter|stop)\b.*\b(camera|webcam|vision)\b/;
 const RX_OUVRIR = /\b(ouvre|ouvrir|allume|allumer|active|activer|lance|lancer|demarre|demarrer)\b.*\b(camera|webcam|vision)\b/;
@@ -193,41 +190,18 @@ async function ouvrirCamera(parler) {
 }
 function fermerCamera(parler) {
   if (!vision?.ouverte) { if (parler) voix.say("La caméra est déjà fermée, Monsieur."); return; }
-  vision.fermer(); sfx.veille(); holo?.resetEye(); body.classList.remove("veille", "regard"); donnees.camera(false);
+  vision.fermer(); sfx.veille(); body.classList.remove("veille"); donnees.camera(false);
   if (parler) voix.say("Caméra fermée, Monsieur.");
 }
 diag.onCamera(() => (vision?.ouverte ? fermerCamera(false) : ouvrirCamera(false)));
 
-// ---------- suivi du visage, déplacement libre, réglages ----------
-const suivi = createSuivi();
-try { suivi.afficher(localStorage.getItem("jarvis.suivi") !== "off"); } catch (_) {}
+// ---------- déplacement libre, menu des données, réglages ----------
 const deplacement = createDeplacement({ J, sfx });
 ext.apresWidgets = () => deplacement.restaurer();
 requestAnimationFrame(() => deplacement.restaurer());
 // Menu des données à gauche (météo, GPS, radar…) : on attrape une tuile et on pose le module où l'on veut.
 const donnees = createDonnees({ J, sfx, voix, cfg, deplacement, memoire, notes });
-// Commandes par les yeux : clin d'œil, double clignement, yeux fermés
-const CLE_YEUX = "jarvis.yeux";
-const yeuxCfg = Object.assign({ clin: "clic", double: "ecoute", fermes: "silence" }, (() => { try { return JSON.parse(localStorage.getItem(CLE_YEUX)) || {}; } catch (_) { return {}; } })());
-const NOMS_YEUX = { clin: "CLIN D'ŒIL", double: "2 CLIGNEMENTS", fermes: "YEUX FERMÉS" };
-const NOMS_ACTIONS = { clic: "CLIC", menu: "MENU", ecoute: "ÉCOUTE", reglages: "RÉGLAGES", silence: "SILENCE" };
-const aideYeux = () => suivi.aide(Object.entries(NOMS_YEUX).filter(([k]) => yeuxCfg[k] !== "off").map(([k, n]) => `${n} : ${NOMS_ACTIONS[yeuxCfg[k]]}`).join(" · "));
-aideYeux();
-const yeux = createYeux({ onCommande: (type) => {
-  const action = yeuxCfg[type]; if (!action || action === "off") return;
-  if (action === "clic") {
-    const c = vise && vise.isConnected ? vise : null;
-    if (c?.matches("[data-act]")) { sfx.bip(); J.act(c); }
-    else if (c?.matches(".tuile[data-source]")) donnees.placer(c.dataset.source);
-    else { donnees.basculer(); sfx.bip(); }
-  } else if (action === "menu") { donnees.basculer(); sfx.bip(); }
-  else if (action === "ecoute") { voix.stop(); sfx.ecoute(); J.startRec(); }
-  else if (action === "reglages") { if (document.querySelector('#panels .panel[data-kind="reglages"]')) reglages.fermer(); else reglages.ouvrir(); }
-  else if (action === "silence") { if (voix.speaking) { voix.stop(); sfx.fin_ecoute(); } else return; }
-  suivi.flash(`${NOMS_YEUX[type]} · ${NOMS_ACTIONS[action]}`);
-} });
-const reglages = createReglages({ J, voix, sfx, cfg, suivi, deplacement, diag, donnees,
-  yeux: { get: (k) => yeuxCfg[k], set: (k, v) => { yeuxCfg[k] = v; try { localStorage.setItem(CLE_YEUX, JSON.stringify(yeuxCfg)); } catch (_) {} aideYeux(); } },
+const reglages = createReglages({ J, voix, sfx, cfg, deplacement, diag, donnees,
   camera: { ouvrir: () => ouvrirCamera(false), fermer: () => fermerCamera(false), ouverte: () => !!vision?.ouverte } });
 const RX_REGLAGES = /\b(ouvre|ouvrir|affiche|afficher|montre|va dans|aller dans)\b.*\b(reglages?|parametres?|preferences|options)\b|^(reglages?|parametres?)$/;
 const RX_MENU = /\b(ouvre|ouvrir|affiche|afficher|montre|montrer)\b.*\b(menu|donnees)\b/;
@@ -268,13 +242,6 @@ function curseur(main) {
   }
 })();
 function brancherVision() {
-  vision.on("tete", (t) => {
-    holo?.setEye(t.x, t.y, t.distance);
-    $("panels").style.perspectiveOrigin = `${50 - t.x * 35}% ${50 + t.y * 35}%`; // parallaxe des panneaux
-  });
-  vision.on("visagePoints", (d) => { suivi.maj(d); yeux.maj(d, d.t); });
-  vision.on("visage", (v) => { if (!v) { holo?.resetEye(); $("panels").style.perspectiveOrigin = ""; } });
-  vision.on("regard", (r) => body.classList.toggle("regard", r));
   vision.on("veille", () => { body.classList.add("veille"); holo?.setDim(1); sfx.veille(); J.setHandsFree(false); });
   vision.on("reveil", () => { body.classList.remove("veille"); holo?.setDim(0); sfx.reveil(); motEveil(); });
   vision.on("assis", () => saluer());
@@ -284,14 +251,16 @@ function brancherVision() {
     if (m.x === null) { c.on = false; c.init = false; c.el.classList.remove("on"); return; }
     if (!c.init) { c.x = m.x; c.y = m.y; c.init = true; }
     c.tx = m.x; c.ty = m.y; c.on = true;
-    c.el.classList.add("on"); c.el.classList.toggle("pince", !!m.pince);
+    c.el.classList.add("on"); c.el.classList.toggle("pince", !!m.pince); c.el.classList.toggle("precis", !!m.precision);
     if (!m.pince) {
       const { act, mobile } = deplacement.sous(m.x, m.y), cible = act || mobile || null;
       if (cible !== vise) { vise?.classList.remove("vise"); vise = cible; vise?.classList.add("vise"); if (act) sfx.tick(); }
     }
   });
   vision.on("pince", (m) => {
-    const c = curseur(m.main), x = c.init ? c.x : m.x, y = c.init ? c.y : m.y;
+    // point exact visé juste avant que les doigts se referment (fourni par la vision) ; le curseur s'y recale
+    const c = curseur(m.main), x = m.x, y = m.y;
+    c.x = c.tx = x; c.y = c.ty = y; c.init = true;
     const { act, mobile } = deplacement.sous(x, y);
     if (act) { sfx.bip(); J.act(act); return; }                                     // pincer un bouton = cliquer
     if (mobile && deplacement.prendre(mobile, x, y)) { saisies[m.main] = { el: mobile }; return; } // saisir
@@ -313,14 +282,27 @@ function brancherVision() {
       zoomRef = { el: null, d: m.d };
     }
   });
-  vision.on("poing", (m) => {                                                        // poing tenu 0,9 s = fermer
-    if (J.pending) { sfx.annulation(); J.decide(false); return; }
-    const p = deplacement.sous(m.x, m.y).mobile || document.querySelector("#panels .panel");
-    if (p?.classList.contains("module")) { donnees.retirer(p); return; }
-    if (p?.closest("#panels")) { sfx.annulation(); J.closeCard(p); }
+  // poing fermé tenu (anneau qui se remplit autour du curseur) = TOUT FERMER
+  vision.on("poingProgres", (m) => { const c = curseurs[m.main]; if (!c) return; c.el.style.setProperty("--p", m.p); c.el.classList.toggle("charge", m.p > 0); });
+  vision.on("poing", () => {
+    if (J.pending) { sfx.annulation(); J.decide(false); return; }                 // une action en attente : refusée
+    toutFermer();
   });
-  vision.on("pouce", () => { sfx.confirmation(); if (J.pending) J.decide(true); });
-  vision.on("paume", () => { if (voix.speaking) { voix.stop(); sfx.fin_ecoute(); } });
+  vision.on("pouce", () => { sfx.confirmation(); if (J.pending) J.decide(true); }); // pouce levé = valider
+  vision.on("paume", () => { if (voix.speaking) { voix.stop(); sfx.fin_ecoute(); } }); // main ouverte = silence
+  vision.on("victoire", () => { voix.stop(); sfx.ecoute(); J.startRec(); });        // « V » = Jarvis vous écoute
+}
+// Ferme tout ce qui est ouvert : panneaux, réglages, carte, schéma, modules posés ; Jarvis se tait.
+function toutFermer() {
+  const ouverts = document.querySelectorAll("#panels .panel, #libres .module").length + (body.classList.contains("map-on") || body.classList.contains("stage-on") ? 1 : 0);
+  voix.stop();
+  for (const s of Object.values(saisies)) if (s?.el) deplacement.lacher(0, 0);
+  Object.keys(saisies).forEach((k) => delete saisies[k]);
+  document.querySelectorAll("#libres .module").forEach((m) => donnees.retirer(m));
+  J.goHome();
+  document.querySelectorAll("#panels .panel").forEach((p) => J.closeCard(p));
+  sfx.whoosh_inverse(); if (ouverts) sfx.annulation();
+  body.classList.add("flash-ferme"); setTimeout(() => body.classList.remove("flash-ferme"), 450);
 }
 diag.set("camera", "off", "dites « ouvre la caméra »"); diag.set("vision", "off", "non chargée"); diag.set("mains", "off", "—");
 diag.boutonCamera(true);
@@ -365,4 +347,4 @@ window.addEventListener("pointerdown", premierGeste); window.addEventListener("k
 // ---------- pont local (ouverture d'apps depuis la version en ligne) ----------
 if (cfg.mode !== "local") pont.demarrer((ok, msg) => { if (ok) J.toast?.("Pont local connecté : Jarvis peut ouvrir vos applications."); else if (msg) console.info("pont local :", msg); });
 
-window.JARVIS_APP = { voix, vision: () => vision, holo: () => holo, diag, cfg, ouvrirCamera, fermerCamera, reglages, deplacement, suivi, donnees, yeux };
+window.JARVIS_APP = { voix, vision: () => vision, holo: () => holo, diag, cfg, ouvrirCamera, fermerCamera, reglages, deplacement, donnees, toutFermer };

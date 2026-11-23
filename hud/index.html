@@ -350,8 +350,6 @@
     .reglages .rg-opt { min-width: 80px; font-size: 15px; }
   }
   @media (max-width: 760px) { #donnees { width: 176px; } .tuile { height: 64px; font-size: 11px; } body.menu-on #leftcol, body.menu-on #clock:not(.libre) { left: 206px; } }
-  /* Suivi du visage */
-  #suivi { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 446; pointer-events: none; }
   /* Vision : vidéo en fond plein écran, miroir + filtre holographique, ligne de scan */
   #visionvideo { position: fixed; inset: 0; width: 100vw; height: 100vh; object-fit: cover; transform: scaleX(-1); z-index: 1;
     filter: grayscale(1) sepia(1) hue-rotate(165deg) saturate(3.2) brightness(.55) contrast(1.35); opacity: 0; transition: opacity 1s; pointer-events: none; }
@@ -372,6 +370,16 @@
   .hand-cursor.on { opacity: 1; }
   .hand-cursor.pince { width: 18px; height: 18px; left: -9px; top: -9px; border-color: var(--warn); box-shadow: 0 0 18px var(--warn); }
   .hand-cursor.pince::after { inset: 4px; background: var(--warn); }
+  .hand-cursor.precis { border-color: #bfefff; box-shadow: 0 0 18px var(--cyan), inset 0 0 12px rgba(73, 198, 255, .6); }
+  /* poing fermé : anneau qui se remplit, puis tout se ferme */
+  .hand-cursor::before { content: ""; position: absolute; inset: -14px; border-radius: 50%; opacity: 0; transition: opacity .15s;
+    background: conic-gradient(var(--danger) calc(var(--p, 0) * 360deg), rgba(255, 90, 90, .12) 0);
+    -webkit-mask: radial-gradient(circle, transparent 62%, #000 64%); mask: radial-gradient(circle, transparent 62%, #000 64%); }
+  .hand-cursor.charge::before { opacity: 1; }
+  .hand-cursor.charge { border-color: var(--danger); box-shadow: 0 0 calc(10px + var(--p, 0) * 30px) var(--danger); }
+  body.flash-ferme::after { content: ""; position: fixed; inset: 0; z-index: 800; pointer-events: none;
+    background: radial-gradient(circle, rgba(255, 90, 90, .0) 30%, rgba(255, 90, 90, .18)); animation: flashferme .45s ease-out forwards; }
+  @keyframes flashferme { from { opacity: 1; } to { opacity: 0; } }
   #diagmini { display: flex; gap: 6px; justify-content: flex-end; margin-top: 4px; cursor: pointer; pointer-events: auto; }
   .dg-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #3a4a5a; }
   .dg-dot.ok { background: var(--ok); box-shadow: 0 0 8px var(--ok); }

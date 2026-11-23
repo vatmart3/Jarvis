@@ -117,13 +117,25 @@ export function createDeplacement({ J, sfx }) {
   addEventListener("pointercancel", () => { if (souris !== null) { souris = null; lacher(0, 0); } });
 
   return {
+    // Ce que vise le curseur. « Aimant » : un bouton à quelques pixels est préféré au vide ou au fond d'un panneau
+    // (plus facile à viser avec la main). Les boutons de fermeture ne sont jamais aimantés (pas de fermeture par erreur).
     sous(x, y) {
-      for (const el of document.elementsFromPoint(x, y)) {
-        if (el.classList.contains("hand-cursor") || el.id === "suivi") continue;
-        const act = el.closest("[data-act]"), mobile = el.closest(MOBILES) || el.closest(SOURCES);
-        if (act || mobile) return { act, mobile };
+      const essai = (px, py) => {
+        for (const el of document.elementsFromPoint(px, py)) {
+          if (el.classList.contains("hand-cursor")) continue;
+          const act = el.closest("[data-act]"), mobile = el.closest(MOBILES) || el.closest(SOURCES);
+          if (act || mobile) return { act, mobile };
+        }
+        return null;
+      };
+      const direct = essai(x, y);
+      if (direct?.act) return direct;
+      const rayon = direct?.mobile ? [12, 20] : [16, 30];
+      for (const r of rayon) for (let k = 0; k < 8; k++) {
+        const a = (k * Math.PI) / 4, q = essai(x + r * Math.cos(a), y + r * Math.sin(a));
+        if (q?.act && !q.act.matches(".x, .wx, [data-act='fermer'], [data-act='module-fermer'], [data-act='widget-retirer']") && (!direct?.mobile || q.mobile === direct.mobile)) return q;
       }
-      return {};
+      return direct || {};
     },
     prendre, bouger, lacher, zoomer, tourner, restaurer, reinitialiser, echelle, memoriser,
     source(fn) { fabrique = fn; },
