@@ -51,8 +51,8 @@ def server_up() -> bool:
         return False
 
 
-def wake_server() -> dict:
-    req = urllib.request.Request(URL + "/api/internal/wake", data=b"{}", method="POST",
+def wake_server(ouvrir: bool = True) -> dict:
+    req = urllib.request.Request(URL + "/api/internal/wake", data=json.dumps({"ouvrir": ouvrir}).encode(), method="POST",
                                  headers={"Content-Type": "application/json", "X-Jarvis-Token": _token()})
     with urllib.request.urlopen(req, timeout=5) as resp:
         return json.loads(resp.read().decode("utf-8"))
@@ -64,16 +64,16 @@ def open_window() -> None:
 
 def reveil() -> None:
     log("« Hey Jarvis » détecté")
+    lance = False
     if not server_up():
+        lance = True  # le lanceur ouvre déjà la fenêtre
         subprocess.run([str(HUD_DIR / "lancer-jarvis.command")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=90)
         for _ in range(20):
             if server_up():
                 break
             time.sleep(0.5)
     try:
-        etat = wake_server()
-        if not etat.get("fenetre"):
-            open_window()
+        wake_server(ouvrir=not lance)  # le serveur réveille l'interface et ouvre la fenêtre si besoin
     except OSError as exc:
         log(f"Serveur Jarvis injoignable : {exc}")
         open_window()

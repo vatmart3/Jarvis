@@ -199,6 +199,11 @@ PLIST
     echo "    (Pour le désactiver : launchctl unload \"$ECOUTE_AGENT\" ; pkill -f hud/ecoute.py)"
 fi
 
+# ---------- iPhone ----------
+if ask "Relier ton iPhone (notifications + « Hey Jarvis » depuis le téléphone) ?"; then
+    "$HUD_DIR/telephone.sh"
+fi
+
 echo
 echo "C'est prêt. Ouvre Jarvis depuis le Launchpad, le Dock, ou Cmd+Espace puis « Jarvis »."
 open "$APP_DIR"

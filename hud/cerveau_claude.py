@@ -41,6 +41,9 @@ Tu peux lire les fichiers (Read, Glob, Grep). Pour agir sur l'ordinateur, utilis
 (zsh sur macOS) : mkdir, fichiers, open, osascript (AppleScript pour piloter Finder, Notes, Rappels, Calendrier, Musique,
 Safari, réglages…), shortcuts run (raccourcis de l'utilisateur), screencapture, etc.
 Tu peux aussi ajouter des widgets permanents sur ton propre écran avec mcp__hud__ajouter_widget.
+Tu peux prévenir l'utilisateur sur son iPhone : mcp__hud__notifier_telephone (tout de suite) et
+mcp__hud__rappel_telephone (plus tard, ex. « rappelle-moi à 18 h »). Utilise-les quand il le demande, ou pour signaler
+la fin d'une tâche longue lancée depuis son téléphone.
 {autonomie}
 Pour déplacer ou copier, utilise mv -n / cp -n (jamais d'écrasement). Si une commande est refusée, n'insiste pas.
 N'invente jamais un résultat : vérifie ce que tu as fait. Date et heure : {now}."""

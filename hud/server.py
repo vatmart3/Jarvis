@@ -37,6 +37,7 @@ import outils  # noqa: E402
 import cerveau_claude  # noqa: E402
 import securite  # noqa: E402
 import widgets  # noqa: E402
+import telephone  # noqa: E402
 import secrets  # noqa: E402
 
 HUD_DIR = Path(__file__).resolve().parent
@@ -80,6 +81,7 @@ Tu contrôles un écran holographique plein écran et l'ordinateur grâce à tes
 - itineraire, style_carte (sombre, satellite, plan), zoom_carte, accueil (efface tout) ;
 - afficher_panneau : panneau à l'écran pour une liste, un résumé, des chiffres ou des étapes ;
 - meteo, minuteur, infos_systeme : affichés à l'écran ;
+- notifier_telephone, rappel_telephone : notification sur l'iPhone, tout de suite ou plus tard ;
 - ajouter_widget, retirer_widget : widgets permanents sur l'écran d'accueil (météo, état du Mac, note, horloge, compte à rebours) ;
 - ouvrir_application, ouvrir_url, rechercher_web, regler_volume : exécutés directement ;
 - executer_commande : commande shell zsh (mkdir, open, osascript…) ; les commandes sensibles demandent une validation.
@@ -233,7 +235,7 @@ def run_shell(commande: str) -> str:
     return f"Code de sortie {proc.returncode}.\n{out}"
 
 
-TOOLS += outils.TOOLS + widgets.TOOLS
+TOOLS += outils.TOOLS + widgets.TOOLS + telephone.TOOLS
 
 DIRECT_TOOLS = {
     "ouvrir_application": lambda a: tool_ouvrir_application(str(a.get("nom", ""))),
@@ -320,9 +322,9 @@ class Session:
                 result = DIRECT_TOOLS[name](args)
                 actions.append({"type": "tool", "name": name, "args": args, "result": result})
                 self._tool_result(name, result)
-            elif name in outils.HANDLERS or name in widgets.HANDLERS:
+            elif name in outils.HANDLERS or name in widgets.HANDLERS or name in telephone.HANDLERS:
                 try:
-                    result, ui = (outils.HANDLERS.get(name) or widgets.HANDLERS[name])(args)
+                    result, ui = execute_tool(name, args)
                 except Exception as exc:  # noqa: BLE001 - signalé au modèle
                     result, ui = f"Échec de l'outil {name} : {exc}", []
                 actions.extend(ui)
@@ -404,6 +406,8 @@ def execute_tool(name: str, args: dict) -> tuple[str, list[dict]]:
         return outils.HANDLERS[name](args)
     if name in widgets.HANDLERS:
         return widgets.HANDLERS[name](args)
+    if name in telephone.HANDLERS:
+        return telephone.HANDLERS[name](args)
     return f"Outil inconnu : {name}", []
 
 
@@ -440,6 +444,52 @@ def current_brain() -> str:
 INTERNAL_TOKEN = secrets.token_hex(16)
 LAST_POLL = [0.0]  # dernier passage de l'interface (fenêtre ouverte ?)
 WAKE_AT = [0.0]  # dernier « Hey Jarvis »
+
+
+def reveiller_mac(ouvrir: bool = True) -> bool:
+    """Réveille l'interface (« Hey Jarvis ») ; ouvre la fenêtre si elle est fermée. Renvoie True si elle était ouverte."""
+    fenetre = time.time() - LAST_POLL[0] < 3
+    WAKE_AT[0] = time.time()
+    BUS.push("wake")
+    if not fenetre and ouvrir:
+        try:
+            subprocess.Popen([str(HUD_DIR / "ouvrir-fenetre.sh")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError:
+            pass
+    return fenetre
+
+
+CONTEXTE_TELEPHONE = ("[Demande envoyée à distance depuis l'iPhone de l'utilisateur : il n'est peut-être pas devant le Mac. "
+                      "Fais la tâche sur le Mac en autonomie ; ta réponse finale lui sera envoyée en notification, "
+                      "donc résume ce que tu as fait et donne les informations utiles en quelques phrases.] ")
+
+
+def ordre_telephone(texte: str) -> None:
+    """Ordre reçu de l'iPhone (raccourci « Hey Jarvis »)."""
+    texte = texte.strip()
+    if telephone.est_reveil(texte):
+        reveiller_mac()
+        telephone.notifier("Je suis ouvert sur ton Mac et je t'écoute.", "Jarvis")
+        return
+    BUS.push("activity", outil="telephone")
+    try:
+        if current_brain() == "claude":
+            res = BRAIN.ask(CONTEXTE_TELEPHONE + texte)
+        else:
+            res = SESSION.ask(texte)
+            if res.get("pending"):
+                BUS.push("pending", pending=res["pending"])
+    except Exception as exc:  # noqa: BLE001
+        res = {"error": str(exc)}
+    if res.get("actions"):
+        BUS.push("actions", actions=res["actions"])
+    if res.get("error"):
+        telephone.notifier(res["error"], "Jarvis · problème", "high", "warning")
+    elif res.get("pending"):
+        telephone.notifier("Action sensible en attente : valide-la sur l'écran du Mac.\n" + res["pending"]["commande"],
+                           "Jarvis · validation requise", "high", "lock")
+    else:
+        telephone.notifier(res.get("reply") or "C'est fait.", "Jarvis")
 
 
 def write_token() -> None:
@@ -611,10 +661,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"error": "Requête invalide."})
         try:
             if path == "/api/internal/wake":
-                fenetre = time.time() - LAST_POLL[0] < 3
-                WAKE_AT[0] = time.time()
-                BUS.push("wake")
-                return self._json(200, {"fenetre": fenetre})
+                return self._json(200, {"fenetre": reveiller_mac(bool(data.get("ouvrir", True)))})
             if path == "/api/internal/tool":
                 text, is_error = BRAIN.tool_call(str(data.get("name", "")), data.get("args") or {})
                 return self._json(200, {"text": text, "is_error": is_error})
@@ -672,6 +719,9 @@ class Handler(BaseHTTPRequestHandler):
 def main() -> None:
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     write_token()
+    if telephone.config(create=False):  # configuré avec hud/telephone.sh
+        telephone.Ecouteur(ordre_telephone).start()
+        print("Lien iPhone actif (ntfy).")
     print(f"Jarvis HUD : http://localhost:{PORT}  (cerveau : {current_brain()}, modèle local : {MODEL})")
     print("Ctrl+C pour arrêter.")
     try:

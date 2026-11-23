@@ -86,6 +86,26 @@ La détection tourne en local (openWakeWord) : le son n'est ni enregistré ni en
 reste allumé dans la barre des menus. macOS demande l'accès au micro pour « Jarvis Ecoute » la première fois : accepte.
 Si Jarvis se réveille trop ou pas assez, règle la sensibilité avec `JARVIS_WAKE_THRESHOLD` (0.5 par défaut).
 
+### Jarvis sur l'iPhone (notifications et « Hey Jarvis » à distance)
+
+Passe par **ntfy** (app gratuite, sans compte ni clé). Configuration :
+
+```bash
+~/jarvis-kit/hud/telephone.sh
+```
+
+Le script crée des identifiants secrets, envoie une notification de test et affiche le guide pas à pas
+(abonnement dans l'app ntfy, raccourci iPhone « Jarvis », phrase « Hey Jarvis » dans Réglages > Accessibilité >
+Raccourcis vocaux, iOS 18+). Ensuite :
+
+- « Hey Jarvis » sur l'iPhone sans rien ajouter (ou « ouvre-toi ») → Jarvis s'ouvre sur le Mac et t'écoute ;
+- « Hey Jarvis » puis une demande → Jarvis la fait sur le Mac et te répond en notification ;
+- Jarvis peut te prévenir de lui-même : « préviens-moi sur mon téléphone quand c'est fini », « rappelle-moi à 18 h 30 d'appeler maman ».
+
+Le Mac doit être allumé (pas forcément devant toi). Les messages passent par le serveur ntfy.sh, sans chiffrement de bout
+en bout : n'y dicte pas de mots de passe. Les identifiants sont dans `~/.openjarvis/hud-telephone.json`
+(et le guide dans `~/.openjarvis/hud-telephone-guide.txt`) : garde-les pour toi.
+
 ### Mode propriétaire et widgets
 
 - **Propriétaire** (par défaut) : Jarvis agit seul, comme toi : créer des dossiers et des fichiers, ranger, piloter les apps
