@@ -31,11 +31,11 @@ if [[ -f "$OJ_HOME/config.toml" ]]; then
 fi
 cp "$REPO_DIR/config/config.toml" "$OJ_HOME/config.toml"
 
-echo "==> 3/3 Téléchargement du modèle $MODEL…"
+echo "==> 3/3 Téléchargement du modèle ${MODEL}…"
 if command -v ollama >/dev/null 2>&1; then
-    ollama pull "$MODEL" || echo "    Échec du téléchargement ; relance plus tard : ollama pull $MODEL"
+    ollama pull "${MODEL}" || echo "    Échec du téléchargement ; relance plus tard : ollama pull ${MODEL}"
 else
-    echo "    Ollama introuvable dans le PATH ; ouvre un nouveau terminal puis : ollama pull $MODEL"
+    echo "    Ollama introuvable dans le PATH ; ouvre un nouveau terminal puis : ollama pull ${MODEL}"
 fi
 
 cat <<MSG
