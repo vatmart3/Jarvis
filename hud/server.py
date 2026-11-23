@@ -667,7 +667,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/status":
             return self._json(200, {"model": MODEL, "ollama": OLLAMA, "mac": IS_MAC, "cerveau": current_brain(),
                                     "autonomie": current_autonomy(), "vitesse": current_speed(), "claude": bool(cerveau_claude.find_claude()),
-                                    "reveil": time.time() - WAKE_AT[0] < 15})
+                                    "reveil": time.time() - WAKE_AT[0] < 15, "version": VERSION_INTERFACE()})
         if path == "/api/events":
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             try:
@@ -798,8 +798,37 @@ class Handler(BaseHTTPRequestHandler):
         self._json(404, {"error": "Introuvable."})
 
 
+def _empreinte(motifs) -> str:
+    """Empreinte (dates et tailles) d'un ensemble de fichiers : change dès qu'un fichier est modifié (git pull)."""
+    import hashlib
+    h = hashlib.sha1()
+    for motif in motifs:
+        for f in sorted(HUD_DIR.glob(motif)):
+            try:
+                st = f.stat(); h.update(f"{f.name}:{st.st_mtime_ns}:{st.st_size};".encode())
+            except OSError:
+                pass
+    return h.hexdigest()[:12]
+
+
+VERSION_INTERFACE = lambda: _empreinte(["index.html", "schema.js", "js/*.js"])  # noqa: E731
+
+
+def _surveiller_code() -> None:
+    """Relance le serveur quand son code change (après un git pull) : plus besoin de redémarrer Jarvis."""
+    depart = _empreinte(["*.py"])
+    while True:
+        time.sleep(3)
+        if _empreinte(["*.py"]) != depart:
+            print("Code de Jarvis mis à jour : redémarrage du serveur…", flush=True)
+            time.sleep(0.5)
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+
+
 def main() -> None:
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    server.allow_reuse_address = True
+    threading.Thread(target=_surveiller_code, daemon=True).start()
     write_token()
     if telephone.config(create=False):  # configuré avec hud/telephone.sh
         telephone.Ecouteur(ordre_telephone).start()

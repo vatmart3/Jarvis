@@ -478,7 +478,7 @@
 
 <script src="/vendor/leaflet/leaflet.js"></script>
 <script src="/schema.js"></script>
-<script type="module" src="/js/app.js"></script>
+<script type="module" src="/js/app.js" onerror="setTimeout(() => window.JARVIS && window.JARVIS.toast('Les modules 3D, caméra et voix ne se sont pas chargés : relancez Jarvis depuis le Dock.'), 1500)"></script>
 <script>
 (() => {
   "use strict";
@@ -1364,7 +1364,15 @@
                                             : "Mode prudent. Je vous demanderai avant chaque commande.");
     } catch (e) { addLine("error", e.message); }
   };
+  // Mise à jour automatique : si l'interface change sur le disque (git pull), la page se recharge d'elle-même.
+  let versionChargee = null;
+  setInterval(() => {
+    fetch("/api/status", { cache: "no-store" }).then((r) => r.json()).then((s) => {
+      if (versionChargee && s.version && s.version !== versionChargee && !busy && !pending) location.reload();
+    }).catch(() => {});
+  }, 15000);
   fetch("/api/status").then((r) => r.json()).then((s) => {
+    versionChargee = s.version || null;
     showBrain(s); $("srv").textContent = "Système en ligne"; $("srvdot").className = "dot on";
     if (s.reveil) setTimeout(onWake, 600); // fenêtre ouverte par « Hey Jarvis »
   }).catch(() => { $("srv").textContent = "Serveur injoignable"; $("srvdot").className = "dot err"; });
