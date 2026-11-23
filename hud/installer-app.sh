@@ -9,6 +9,7 @@ if [[ "$(uname)" != "Darwin" ]]; then echo "Ce script est pour macOS."; exit 1; 
 
 ask() {  # question oui/non lue au clavier, « non » si aucun terminal
     local a=""
+    [ -n "${JARVIS_INSTALL_YES:-}" ] && return 0  # réponses automatiques (tests)
     if { exec 3</dev/tty; } 2>/dev/null; then read -r -p "$1 [o/N] " a <&3 || a=""; exec 3<&-; fi
     [[ "$a" =~ ^[oOyY] ]]
 }
@@ -18,12 +19,13 @@ APP_DIR="$HOME/Applications/Jarvis.app"
 LABEL="local.jarvis.hud"
 
 if [[ "${1:-}" == "--desinstaller" ]]; then
-    for f in "$HOME/Library/LaunchAgents/$LABEL.server.plist" "$HOME/Library/LaunchAgents/$LABEL.plist"; do
+    for f in "$HOME/Library/LaunchAgents/$LABEL.server.plist" "$HOME/Library/LaunchAgents/$LABEL.plist" "$HOME/Library/LaunchAgents/$LABEL.ecoute.plist"; do
         [ -f "$f" ] && { launchctl unload "$f" 2>/dev/null || true; rm -f "$f"; }
     done
     pkill -f "hud/server.py" 2>/dev/null || true
-    rm -rf "$APP_DIR"
-    echo "Jarvis.app et ses services ont été supprimés (pense à retirer l'icône du Dock si besoin)."
+    pkill -f "hud/ecoute.py" 2>/dev/null || true
+    rm -rf "$APP_DIR" "$HOME/Applications/Jarvis Ecoute.app"
+    echo "Jarvis.app, l'écoute « Hey Jarvis » et leurs services ont été supprimés (pense à retirer l'icône du Dock si besoin)."
     exit 0
 fi
 
@@ -135,6 +137,66 @@ PLIST
     launchctl unload "$AGENT" 2>/dev/null || true
     launchctl load "$AGENT"
     echo "    Jarvis s'ouvrira à chaque démarrage (pour annuler : rm \"$AGENT\")."
+fi
+
+# ---------- « Hey Jarvis » ----------
+if ask "Activer « Hey Jarvis » (Jarvis s'ouvre et t'écoute quand tu dis « Hey Jarvis ») ?"; then
+    echo "==> Installation de la détection « Hey Jarvis » (locale, ~150 Mo)"
+    if command -v uv >/dev/null 2>&1 && [ -x "$OJ_HOME/.venv/bin/python" ]; then
+        uv pip install --python "$OJ_HOME/.venv/bin/python" -q openwakeword sounddevice numpy
+    else
+        "$PY" -m pip install -q --user openwakeword sounddevice numpy
+    fi
+    "$PY" -c "import openwakeword.utils as u; u.download_models(['hey_jarvis'])"
+
+    ECOUTE_APP="$HOME/Applications/Jarvis Ecoute.app"
+    rm -rf "$ECOUTE_APP"
+    mkdir -p "$ECOUTE_APP/Contents/MacOS" "$ECOUTE_APP/Contents/Resources"
+    cp "$APP_DIR/Contents/Resources/Jarvis.icns" "$ECOUTE_APP/Contents/Resources/"
+    cat > "$ECOUTE_APP/Contents/MacOS/JarvisEcoute" <<SCRIPT
+#!/bin/bash
+# Le script reste parent du programme d'écoute : macOS attribue ainsi l'accès au micro à « Jarvis Ecoute ».
+export PATH="\$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+export OPENJARVIS_HOME="$OJ_HOME"
+pkill -f "hud/ecoute.py" 2>/dev/null
+"$PY" "$HUD_DIR/ecoute.py" >>"$OJ_HOME/ecoute.log" 2>&1
+SCRIPT
+    chmod +x "$ECOUTE_APP/Contents/MacOS/JarvisEcoute"
+    cat > "$ECOUTE_APP/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>Jarvis Ecoute</string>
+  <key>CFBundleIdentifier</key><string>$LABEL.ecoute</string>
+  <key>CFBundleExecutable</key><string>JarvisEcoute</string>
+  <key>CFBundleIconFile</key><string>Jarvis</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>LSMinimumSystemVersion</key><string>11.0</string>
+  <key>LSUIElement</key><true/>
+  <key>NSMicrophoneUsageDescription</key><string>Jarvis écoute « Hey Jarvis » pour se réveiller. Le son est analysé sur ce Mac et n'est jamais enregistré ni envoyé.</string>
+</dict>
+</plist>
+PLIST
+    codesign --force --deep -s - "$ECOUTE_APP" >/dev/null 2>&1 || true
+
+    ECOUTE_AGENT="$HOME/Library/LaunchAgents/$LABEL.ecoute.plist"
+    cat > "$ECOUTE_AGENT" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$LABEL.ecoute</string>
+  <key>ProgramArguments</key><array><string>/usr/bin/open</string><string>-g</string><string>-a</string><string>$ECOUTE_APP</string></array>
+  <key>RunAtLoad</key><true/>
+</dict>
+</plist>
+PLIST
+    launchctl unload "$ECOUTE_AGENT" 2>/dev/null || true
+    launchctl load "$ECOUTE_AGENT"
+    echo "    « Hey Jarvis » activé. macOS va demander l'accès au micro pour « Jarvis Ecoute » : accepte."
+    echo "    (Pour le désactiver : launchctl unload \"$ECOUTE_AGENT\" ; pkill -f hud/ecoute.py)"
 fi
 
 echo

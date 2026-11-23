@@ -36,10 +36,6 @@ if ! up; then
     echo "Le serveur n'a pas démarré. Détails : $LOG"; tail -n 20 "$LOG"; exit 1
 fi
 
-# 3. Interface plein écran (Chrome en mode application, sinon navigateur par défaut)
-if [ -d "/Applications/Google Chrome.app" ]; then
-    open -na "Google Chrome" --args --app="$URL" --start-fullscreen
-else
-    open "$URL"
-fi
+# 3. Interface plein écran (instance Chrome dédiée à Jarvis)
+"$HUD_DIR/ouvrir-fenetre.sh"
 echo "Jarvis est prêt : $URL"

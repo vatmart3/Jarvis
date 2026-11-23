@@ -23,6 +23,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -437,6 +438,19 @@ def current_brain() -> str:
 
 
 INTERNAL_TOKEN = secrets.token_hex(16)
+LAST_POLL = [0.0]  # dernier passage de l'interface (fenêtre ouverte ?)
+WAKE_AT = [0.0]  # dernier « Hey Jarvis »
+
+
+def write_token() -> None:
+    """Partage le jeton interne avec le programme d'écoute « Hey Jarvis » (fichier lisible par l'utilisateur seul)."""
+    try:
+        path = SETTINGS_PATH.parent / "hud-token"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(INTERNAL_TOKEN)
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
 BUS = cerveau_claude.EventBus()
 BRAIN = cerveau_claude.ClaudeBrain(PORT, INTERNAL_TOKEN, execute_tool, run_shell, BUS, current_autonomy)
 
@@ -542,13 +556,15 @@ class Handler(BaseHTTPRequestHandler):
         path = urllib.parse.urlparse(self.path).path
         if path == "/api/status":
             return self._json(200, {"model": MODEL, "ollama": OLLAMA, "mac": IS_MAC, "cerveau": current_brain(),
-                                    "autonomie": current_autonomy(), "claude": bool(cerveau_claude.find_claude())})
+                                    "autonomie": current_autonomy(), "claude": bool(cerveau_claude.find_claude()),
+                                    "reveil": time.time() - WAKE_AT[0] < 15})
         if path == "/api/events":
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             try:
                 last = int(q.get("after", ["0"])[0])
             except ValueError:
                 last = 0
+            LAST_POLL[0] = time.time()
             events, newest = BUS.after(last)
             return self._json(200, {"events": events, "last": newest})
         if path == "/api/internal/tools":
@@ -594,6 +610,11 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, json.JSONDecodeError):
             return self._json(400, {"error": "Requête invalide."})
         try:
+            if path == "/api/internal/wake":
+                fenetre = time.time() - LAST_POLL[0] < 3
+                WAKE_AT[0] = time.time()
+                BUS.push("wake")
+                return self._json(200, {"fenetre": fenetre})
             if path == "/api/internal/tool":
                 text, is_error = BRAIN.tool_call(str(data.get("name", "")), data.get("args") or {})
                 return self._json(200, {"text": text, "is_error": is_error})
@@ -650,6 +671,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    write_token()
     print(f"Jarvis HUD : http://localhost:{PORT}  (cerveau : {current_brain()}, modèle local : {MODEL})")
     print("Ctrl+C pour arrêter.")
     try:

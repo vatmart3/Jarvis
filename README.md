@@ -78,6 +78,26 @@ Avec Claude, les requêtes comptent dans les limites de ton abonnement.
 **Sécurité :** Claude peut lire tes fichiers et chercher sur le web, mais ne peut **ni modifier ni supprimer** quoi que ce soit
 directement. Toute commande sur l'ordinateur passe par la fenêtre orange et attend ton « oui ».
 
+### « Hey Jarvis »
+
+L'installeur propose d'activer le réveil vocal : dis **« Hey Jarvis »** à tout moment, même Jarvis fermé.
+La fenêtre s'ouvre (ou se réveille), un petit son retentit et Jarvis t'écoute.
+La détection tourne en local (openWakeWord) : le son n'est ni enregistré ni envoyé, mais le point orange du micro
+reste allumé dans la barre des menus. macOS demande l'accès au micro pour « Jarvis Ecoute » la première fois : accepte.
+Si Jarvis se réveille trop ou pas assez, règle la sensibilité avec `JARVIS_WAKE_THRESHOLD` (0.5 par défaut).
+
+### Mode propriétaire et widgets
+
+- **Propriétaire** (par défaut) : Jarvis agit seul, comme toi : créer des dossiers et des fichiers, ranger, piloter les apps
+  (Notes, Rappels, Calendrier, Musique, Finder…), lancer tes Raccourcis, faire des captures d'écran.
+  Il ne demande ton accord que pour les actions **sensibles** : supprimer, écraser un fichier, `sudo`, envoyer un message,
+  modifier des réglages système, installer un logiciel. Ce filet de sécurité repère les cas courants, sans garantie absolue.
+- **Prudent** : il demande avant chaque commande. Bouton « Propriétaire / Prudent ».
+- **Widgets** : « ajoute un widget météo pour Sète », « une horloge de Tokyo », « un compte à rebours jusqu'à Noël »,
+  « une note : appeler le client à 15 h », « l'état du Mac ». Ils restent sur l'écran d'accueil, même après redémarrage.
+  Survole un widget et clique sur ✕ pour le retirer, ou demande-le à Jarvis.
+  Ce sont des widgets de l'écran Jarvis : macOS ne permet pas de créer des widgets du Centre de notifications par script.
+
 ### Utiliser
 
 | Action | Comment |
